@@ -19,7 +19,7 @@ export default function Greeting() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 className="text-2xl font-extrabold tracking-tight text-content-primary md:text-3xl">
-            Halo Fawaz, siap closing deal hari ini?
+            Semangat Fawaz, siap closing deal hari ini?
           </h2>
           <p className="mt-1 flex items-center gap-2 text-sm text-content-secondary">
             <CalendarDays className="h-4 w-4 text-accent" />
