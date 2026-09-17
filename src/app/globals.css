@@ -1,0 +1,90 @@
+/* Loaded at runtime (browser) — keeps `next build` working offline. */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+@layer base {
+  * {
+    @apply border-line;
+  }
+  html {
+    scroll-behavior: smooth;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    /* Clean white foundation — no decorative gradients. */
+    @apply bg-ink-base text-content-primary antialiased;
+  }
+  ::selection {
+    @apply bg-accent-soft text-content-primary;
+  }
+}
+
+@layer components {
+  /* Surfaces — lightweight, flat-but-premium (border + whisper of shadow). */
+  .glass-panel {
+    @apply rounded-xl border border-line bg-white shadow-panel;
+  }
+  .glass-card {
+    @apply rounded-lg border border-line bg-white shadow-card transition-all duration-200;
+  }
+  .glass-card-hover {
+    @apply hover:border-line-muted hover:shadow-lift cursor-pointer;
+  }
+
+  /* Buttons — clear hierarchy: primary terracotta, secondary neutral, ghost quiet. */
+  .btn-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-white shadow-none transition-colors duration-150 hover:bg-accent-dark active:bg-accent-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-ink-overlay px-4 py-2 text-sm font-medium text-content-primary transition-colors duration-150 hover:bg-white hover:border-line-muted active:bg-ink-overlay focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20;
+  }
+  .btn-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white transition-colors duration-150 hover:opacity-90 active:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30 disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20;
+  }
+
+  /* Inputs — predominantly white, subtle border, low-opacity terracotta focus. */
+  .field-input {
+    @apply w-full rounded-lg border border-line bg-white px-3 py-2 text-sm text-content-primary placeholder:text-content-muted outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/15;
+  }
+  .field-label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-content-secondary;
+  }
+
+  /* Badges — soft tinted background + dark text (never saturated fills). */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold leading-none;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-line;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
