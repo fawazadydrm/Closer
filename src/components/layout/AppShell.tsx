@@ -9,7 +9,7 @@ import { useCloser } from "@/state/CloserContext";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { activeTab, navigate } = useUI();
-  const { loading } = useCloser();
+  const { loading, meta } = useCloser();
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
@@ -17,7 +17,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="sticky top-0 z-40 border-b border-line bg-white">
         <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-3 px-4 py-2.5 landscape:py-2 md:gap-4 md:px-6 md:py-3">
           <Brand />
-          <DesktopTabs active={activeTab} onChange={navigate} />
+          <div className="flex items-center gap-3 md:gap-4">
+            <DesktopTabs active={activeTab} onChange={navigate} />
+            <SyncBadge lastSyncedAt={meta.lastSyncedAt} syncing={meta.syncing} />
+          </div>
         </div>
       </div>
 
@@ -26,7 +29,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         {loading ? (
           <div className="flex min-h-[300px] flex-1 flex-col items-center justify-center gap-3 py-16 text-content-secondary">
             <Loader2 className="h-7 w-7 animate-spin text-accent" />
-            <p className="text-sm font-medium">Menarik data dari Supabase…</p>
+            <p className="text-sm font-medium">Memuat data…</p>
           </div>
         ) : (
           children
@@ -44,7 +47,6 @@ function Brand() {
     <div className="flex min-w-0 items-center gap-2 sm:gap-3">
       <div className="relative grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent sm:h-10 sm:w-10">
         <Radar className="h-5 w-5 text-white sm:h-6 sm:w-6" strokeWidth={2.2} />
-        <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 animate-pulse rounded-full bg-success ring-2 ring-white" />
       </div>
       <div className="min-w-0 leading-tight">
         <h1 className="truncate text-base font-extrabold tracking-tight text-content-primary sm:text-lg">
@@ -55,6 +57,41 @@ function Brand() {
           <span className="text-content-muted">|</span> Fawaz Adya Dermawan
         </p>
       </div>
+    </div>
+  );
+}
+
+/** Live sync beacon + last-updated time — pulses while writes are in flight. */
+function SyncBadge({ lastSyncedAt, syncing }: { lastSyncedAt: string; syncing: number }) {
+  const live = syncing > 0;
+  const time = new Date(lastSyncedAt).toLocaleTimeString("id-ID", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <div
+      className="flex shrink-0 items-center gap-2 rounded-lg border border-line bg-ink-overlay px-2.5 py-1.5"
+      title={live ? "Menyimpan perubahan…" : `Tersinkronkan pukul ${time}`}
+    >
+      <span className="relative flex h-2 w-2 shrink-0">
+        {live && (
+          <span className="absolute inline-flex h-full w-full animate-sync-ping rounded-full bg-success/60" />
+        )}
+        <span
+          className={`relative inline-flex h-2 w-2 rounded-full transition-colors duration-300 ${
+            live ? "animate-pulse bg-accent" : "bg-success"
+          }`}
+        />
+      </span>
+      <span
+        className={`text-[11px] font-semibold leading-tight ${
+          live ? "text-accent" : "text-content-secondary"
+        }`}
+      >
+        {live ? "Sinkron…" : "Sinkron"}
+        <span className="block font-medium tabular-nums text-content-muted">{time}</span>
+      </span>
     </div>
   );
 }

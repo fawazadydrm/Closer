@@ -15,11 +15,14 @@ import {
   Wallet,
 } from "lucide-react";
 import Modal from "@/components/ui/Modal";
+import PdfDropzone, { uploadStagedPdfs, type StagedDoc } from "@/components/documents/PdfDropzone";
 import { normalizeDeal, useCloser } from "@/state/CloserContext";
 import { useUI } from "@/state/UIContext";
-import { PIPELINE_STAGES, DOC_CATEGORY_META } from "@/lib/stages";
-import { formatIDR, uid } from "@/lib/format";
+import { PIPELINE_STAGES, DOC_CATEGORY_META, DEAL_TYPES, DEAL_TYPE_META } from "@/lib/stages";
+import { formatIDR, simulateFromHps, uid } from "@/lib/format";
 import type {
+  DealDocument,
+  DealType,
   DocCategory,
   NewDealInput,
   PipelineStage,
@@ -40,17 +43,21 @@ export default function AddDealModal() {
   const [company, setCompany] = useState("");
   const [stage, setStage] = useState<PipelineStage>(PIPELINE_STAGES[0]);
   const [priority, setPriority] = useState<Priority>("medium");
+  const [dealType, setDealType] = useState<DealType>("sales_langsung");
+  const [landingUrl, setLandingUrl] = useState("");
   const [openMore, setOpenMore] = useState(false);
 
   // ── Detail lain (opsional) ──
   const [contactName, setContactName] = useState("");
   const [contactRole, setContactRole] = useState("");
   const [contactPhone, setContactPhone] = useState("");
-  const [cogs, setCogs] = useState("");
+  const [hps, setHps] = useState("");
   const [marginPct, setMarginPct] = useState("");
   const [industry, setIndustry] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [docs, setDocs] = useState<DocRow[]>([]);
+  const [pdfs, setPdfs] = useState<StagedDoc[]>([]);
+  const [uploading, setUploading] = useState(false);
   const [reminderTitle, setReminderTitle] = useState("");
   const [reminderDate, setReminderDate] = useState("");
 
@@ -59,15 +66,19 @@ export default function AddDealModal() {
     setCompany("");
     setStage(PIPELINE_STAGES[0]);
     setPriority("medium");
+    setDealType("sales_langsung");
+    setLandingUrl("");
     setOpenMore(false);
     setContactName("");
     setContactRole("");
     setContactPhone("");
-    setCogs("");
+    setHps("");
     setMarginPct("");
     setIndustry("");
     setTargetDate("");
     setDocs([]);
+    setPdfs([]);
+    setUploading(false);
     setReminderTitle("");
     setReminderDate("");
   };
@@ -85,10 +96,11 @@ export default function AddDealModal() {
 
   const removeDoc = (i: number) => setDocs((d) => d.filter((_, idx) => idx !== i));
 
-  const handleSubmit = (e: FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (uploading) return;
 
-    const cogsNum = Math.max(0, Number(cogs) || 0);
+    const hpsNum = Math.max(0, Number(hps) || 0);
     const marginNum = Math.max(0, Math.min(100, Number(marginPct) || 0));
 
     const input: NewDealInput = {
@@ -96,7 +108,9 @@ export default function AddDealModal() {
       company: company.trim(), // default "—"
       stage: stage.id as StageId,
       priority,
-      cogs: cogsNum,
+      dealType,
+      landingPageUrl: landingUrl.trim(),
+      hps: hpsNum,
       marginPct: marginNum,
       industry: industry.trim(),
       targetCloseDate: targetDate ? new Date(`${targetDate}T17:00:00`).toISOString() : undefined,
@@ -109,9 +123,23 @@ export default function AddDealModal() {
       };
     }
 
-    const deal = normalizeDeal(input); // id dibuat di sini — jangan buat id terpisah
+    // Pre-generate the id so staged PDFs live under the same folder as the deal row.
+    const dealId = uid("de");
+    let pdfDocs: DealDocument[] = [];
+    if (pdfs.length > 0) {
+      setUploading(true);
+      try {
+        const res = await uploadStagedPdfs(dealId, pdfs);
+        pdfDocs = res.docs;
+        res.errors.forEach((err) => showToast(err));
+      } finally {
+        setUploading(false);
+      }
+    }
+
+    // id dibuat di sini — input.id memastikan PDF & baris deal memakai id yang sama
+    const deal = normalizeDeal({ ...input, id: dealId, documents: pdfDocs });
     dispatch({ type: "ADD_DEAL", deal });
-    const dealId = deal.id;
 
     // Attach any filled document links
     docs
@@ -146,29 +174,34 @@ export default function AddDealModal() {
       });
     }
 
-    handleClose();
+    handleClose(); // close + reset (juga menghapus state `uploading`)
     openDeal(dealId);
     showToast(`Deal "${deal.title}" ditambahkan`);
   };
 
-  // Live preview harga jual saat user mengisi COGS / margin
-  const cogsNum = Math.max(0, Number(cogs) || 0);
+  // Live preview simulasi saat user mengisi HPS / margin target
+  const hpsNum = Math.max(0, Number(hps) || 0);
   const marginNum = Math.max(0, Math.min(100, Number(marginPct) || 0));
-  const preview = cogsNum > 0 ? Math.round(cogsNum * (1 + marginNum / 100)) : 0;
+  const preview = hpsNum > 0 ? simulateFromHps(hpsNum, marginNum) : null;
 
   return (
     <Modal
       open={isAddDealOpen}
       onClose={handleClose}
       title="Deal Baru"
-      subtitle="Catat opportunity — detail lain bisa diisi nanti"
+      subtitle="Detail lain bisa diisi nanti"
       footer={
         <>
           <button type="button" onClick={handleClose} className="btn-secondary">
             Batal
           </button>
-          <button type="submit" form="add-deal-form" className="btn-primary">
-            <Plus className="h-4 w-4" /> Simpan Deal
+          <button
+            type="submit"
+            form="add-deal-form"
+            disabled={uploading}
+            className="btn-primary disabled:opacity-60"
+          >
+            <Plus className="h-4 w-4" /> {uploading ? "Menyimpan…" : "Simpan Deal"}
           </button>
         </>
       }
@@ -184,7 +217,7 @@ export default function AddDealModal() {
               autoFocus
               required
               className="field-input"
-              placeholder="cth: Pengadaan Smartboard SMPN 3 Bandung"
+              placeholder="Nama proyek atau opportunity"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
             />
@@ -195,7 +228,7 @@ export default function AddDealModal() {
               <input
                 required
                 className="field-input pl-9"
-                placeholder="PT. Contoh Sejahtera"
+                placeholder="Nama client / perusahaan"
                 value={company}
                 onChange={(e) => setCompany(e.target.value)}
               />
@@ -243,6 +276,40 @@ export default function AddDealModal() {
               ))}
             </div>
           </Field>
+          <Field label="Tipe Penanganan">
+            <div className="flex flex-wrap gap-2">
+              {DEAL_TYPES.map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setDealType(t)}
+                  className={
+                    "rounded-lg border px-2.5 py-1.5 text-[11px] font-semibold leading-tight transition-colors " +
+                    (dealType === t
+                      ? "border-accent bg-accent-soft text-accent"
+                      : "border-line bg-ink-surface text-content-secondary hover:border-line-muted hover:text-content-primary")
+                  }
+                >
+                  {DEAL_TYPE_META[t].label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          {(dealType === "tender" || dealType === "mini_kompetisi") && (
+            <Field label="Link Landing Page (portal tender / mikom)">
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
+                <input
+                  className="field-input pl-9"
+                  type="url"
+                  inputMode="url"
+                  placeholder="https://…"
+                  value={landingUrl}
+                  onChange={(e) => setLandingUrl(e.target.value)}
+                />
+              </div>
+            </Field>
+          )}
         </section>
 
         {/* 2. Detail lain (opsional) — collapsible */}
@@ -303,36 +370,46 @@ export default function AddDealModal() {
                   <Wallet className="h-3.5 w-3.5 text-success" /> Harga
                 </h4>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <Field label="HPS / Harga Distributor (Rp)">
+                  <Field label="HPS dari End User (Rp)">
                     <input
                       className="field-input tabular-nums"
                       inputMode="numeric"
-                      placeholder="0 — kosong dulu kalau belum tahu"
-                      value={cogs}
-                      onChange={(e) => setCogs(e.target.value.replace(/\D/g, ""))}
+                      placeholder="mis. 580.000.000"
+                      value={hps}
+                      onChange={(e) => setHps(e.target.value.replace(/\D/g, ""))}
                     />
                   </Field>
-                  <Field label="Margin (%)">
+                  <Field label="Margin Target (%)">
                     <input
                       className="field-input tabular-nums"
                       inputMode="numeric"
-                      placeholder="cth: 20"
+                      placeholder="%"
                       value={marginPct}
                       onChange={(e) => setMarginPct(e.target.value.replace(/[^\d.]/g, ""))}
                     />
                   </Field>
                 </div>
-                {preview > 0 ? (
-                  <p className="rounded-lg border border-line bg-ink-surface px-3 py-2 text-sm">
-                    <span className="text-content-muted">Harga jual perkiraan: </span>
-                    <span className="font-bold tabular-nums text-content-primary">
-                      {formatIDR(preview)}
-                    </span>
-                  </p>
-                ) : (
-                  <p className="text-xs text-content-muted">
-                    Kosongkan dulu kalau budget/HPS belum diketahui — bisa diisi di detail deal nanti.
-                  </p>
+                {preview && (
+                  <div className="space-y-1 rounded-lg border border-accent/25 bg-accent-soft/60 px-3 py-2 text-sm">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-accent">
+                      Hasil Simulasi
+                    </p>
+                    <p className="flex items-center justify-between">
+                      <span className="text-content-secondary">Harga Jual Ideal</span>
+                      <span className="font-extrabold tabular-nums text-content-primary">
+                        {formatIDR(preview.sellingPrice)}
+                      </span>
+                    </p>
+                    <p className="flex items-center justify-between">
+                      <span className="text-content-secondary">Bid COGS maks.</span>
+                      <span className="font-semibold tabular-nums text-content-primary underline decoration-accent/50 decoration-2 underline-offset-4">
+                        {formatIDR(preview.cogsBid)}
+                      </span>
+                    </p>
+                    <p className="text-[10px] leading-snug text-content-muted">
+                      Asumsi HPS sudah termasuk PPN 11% · simulasi awal untuk diskusi internal.
+                    </p>
+                  </div>
                 )}
               </div>
 
@@ -341,7 +418,7 @@ export default function AddDealModal() {
                 <Field label="Industri">
                   <input
                     className="field-input"
-                    placeholder="Pendidikan, HCKI, Elektronik…"
+                    placeholder="Industri client"
                     value={industry}
                     onChange={(e) => setIndustry(e.target.value)}
                   />
@@ -358,19 +435,22 @@ export default function AddDealModal() {
 
               {/* Dokumen */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-content-secondary">
-                    <Paperclip className="h-3.5 w-3.5 text-stage-cyan" /> Link Dokumen
-                  </h4>
+                <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-content-secondary">
+                  <Paperclip className="h-3.5 w-3.5 text-stage-cyan" /> Dokumen
+                </h4>
+
+                {/* Upload PDF langsung dari sini */}
+                <PdfDropzone staged={pdfs} onStagedChange={setPdfs} />
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-content-muted">
+                    atau link eksternal
+                  </span>
                   <button type="button" onClick={addDocRow} className="btn-ghost -mr-2 text-accent">
                     <Plus className="h-4 w-4" /> Tambah link
                   </button>
                 </div>
-                {docs.length === 0 ? (
-                  <p className="flex items-center gap-2 rounded-lg border border-dashed border-line-muted px-3 py-3 text-xs text-content-muted">
-                    <Link2 className="h-4 w-4" /> Bisa ditambahkan setelah deal dibuat.
-                  </p>
-                ) : (
+                {docs.length > 0 && (
                   <div className="space-y-2">
                     {docs.map((row, i) => (
                       <div
@@ -425,7 +505,7 @@ export default function AddDealModal() {
                   <Field label="Kegiatan">
                     <input
                       className="field-input"
-                      placeholder="cth: Follow up quotation"
+                      placeholder="Kegiatan follow-up"
                       value={reminderTitle}
                       onChange={(e) => setReminderTitle(e.target.value)}
                     />

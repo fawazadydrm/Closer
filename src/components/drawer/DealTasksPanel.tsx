@@ -39,19 +39,12 @@ export default function DealTasksPanel({ deal }: { deal: Deal }) {
     showToast("Tugas dijadwalkan.");
   };
 
-  // datetime-local expects yyyy-MM-ddTHH:mm
-  const nowLocal = () => {
-    const d = new Date();
-    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
-    return d.toISOString().slice(0, 16);
-  };
-
   return (
     <div className="space-y-3">
       <div className="glass-card space-y-2 p-3">
         <input
           className="field-input"
-          placeholder="Judul follow-up (mis. Telepon PIC)"
+          placeholder="Judul follow-up"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
         />
@@ -122,7 +115,7 @@ export default function DealTasksPanel({ deal }: { deal: Deal }) {
                 </span>
                 {!t.done && (
                   <ReminderButton
-                    label="🔔 Telegram"
+                    label="Telegram"
                     taskId={t.id}
                     dealId={deal.id}
                     title={t.title}

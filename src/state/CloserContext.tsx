@@ -4,16 +4,26 @@ import {
   createContext,
   useContext,
   useEffect,
+  useCallback,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
-import type { Deal, NewDealInput, NoteEntry, StageId, TaskReminder } from "@/lib/types";
+import type {
+  Deal,
+  DealDocument,
+  NewDealInput,
+  NoteEntry,
+  StageId,
+  TaskReminder,
+} from "@/lib/types";
 import { INITIAL_DEALS, INITIAL_TASKS } from "@/lib/data";
-import { sellingPrice, uid } from "@/lib/format";
+import { sellingPrice, simulateFromHps, uid } from "@/lib/format";
 import { db } from "@/lib/queries";
 import { getSupabase } from "@/lib/supabase";
+import { removeStoredPdf } from "@/lib/storage";
 
 /** Lengkapi input minimal form deal jadi objek Deal utuh dengan default aman. */
 export function normalizeDeal(input: NewDealInput): Deal {
@@ -22,7 +32,7 @@ export function normalizeDeal(input: NewDealInput): Deal {
     now.getDate()
   ).padStart(2, "0")}T17:00:00.000Z`;
   const base: Deal = {
-    id: uid("de"),
+    id: input.id ?? uid("de"), // pre-generated when PDFs are uploaded with the deal
     title: input.title.trim() || "Tanpa Judul",
     company: input.company.trim() || "—",
     contact: {
@@ -31,10 +41,13 @@ export function normalizeDeal(input: NewDealInput): Deal {
       role: input.contact?.role?.trim() || undefined,
     },
     value: input.value ?? 0,
+    hps: input.hps ?? 0,
     cogs: input.cogs ?? 0,
     marginPct: input.marginPct ?? 0,
     stage: input.stage ?? "prospecting",
     priority: input.priority ?? "medium",
+    dealType: input.dealType ?? "sales_langsung",
+    landingPageUrl: input.landingPageUrl?.trim() ?? "",
     targetCloseDate: input.targetCloseDate ?? todayIso,
     industry: input.industry?.trim() || "Umum",
     owner: input.owner ?? "Fawaz",
@@ -42,8 +55,14 @@ export function normalizeDeal(input: NewDealInput): Deal {
     notes: input.notes ?? [],
     createdAt: new Date().toISOString(),
   };
-  // Harga jual selalu sinkron dengan rumus COGS × margin.
-  base.value = sellingPrice(base);
+  // HPS terisi → value & cogs adalah hasil simulasi (harga jual + bid COGS).
+  if (base.hps > 0) {
+    const sim = simulateFromHps(base.hps, base.marginPct);
+    base.value = sim.sellingPrice;
+    base.cogs = sim.cogsBid;
+  } else {
+    base.value = sellingPrice(base);
+  }
   return base;
 }
 
@@ -64,6 +83,51 @@ export type CloserAction =
 interface CloserState {
   deals: Deal[];
   tasks: TaskReminder[];
+}
+
+/** Write-through persistence per mutation — returns success so the UI can
+ *  reflect sync status (the pulsing "sinkron" indicator). */
+function persistAction(
+  action: CloserAction,
+  stateRef: React.MutableRefObject<CloserState>
+): Promise<boolean> | null {
+  switch (action.type) {
+    case "ADD_DEAL":
+      return db.addDeal(action.deal);
+    case "UPDATE_DEAL":
+      return db.updateDeal(action.id, action.patch);
+    case "MOVE_DEAL":
+      return db.updateDeal(action.id, { stage: action.stage });
+    case "DELETE_DEAL":
+      return db.deleteDeal(action.id);
+    case "ADD_NOTE":
+      return db.addNote(action.dealId, {
+        id: action.noteId,
+        text: action.text,
+        createdAt: new Date().toISOString(),
+      });
+    case "ADD_DOCUMENT":
+      return db.addDocument(action.dealId, action.doc);
+    case "REMOVE_DOCUMENT": {
+      const doc: DealDocument | undefined = stateRef.current.deals
+        .flatMap((d) => d.documents)
+        .find((x) => x.id === action.docId);
+      // Also delete the storage object behind real PDF uploads.
+      if (doc?.source === "upload") void removeStoredPdf(doc.url);
+      return db.removeDocument(action.docId);
+    }
+    case "ADD_TASK":
+      return db.addTask(action.task);
+    case "TOGGLE_TASK": {
+      const t = stateRef.current.tasks.find((x) => x.id === action.id);
+      return t ? db.toggleTask(action.id, !t.done) : Promise.resolve(true);
+    }
+    case "DELETE_TASK":
+      return db.deleteTask(action.id);
+    case "REPLACE":
+      // Initial hydration only — nothing to persist.
+      return null;
+  }
 }
 
 // ── Reducer ───────────────────────────────────────────────────
@@ -161,6 +225,7 @@ interface CloserContextValue extends CloserState {
   dispatch: React.Dispatch<CloserAction>;
   dealById: (id: string) => Deal | undefined;
   loading: boolean;
+  meta: { lastSyncedAt: string; syncing: number };
 }
 
 const CloserContext = createContext<CloserContextValue | null>(null);
@@ -171,26 +236,35 @@ export function CloserProvider({ children }: { children: ReactNode }) {
     tasks: [],
   });
   const [loading, setLoading] = useState(true);
+  // Timestamp of the last successful hydration — surfaced to the UI as
+  // "data terakhir disinkronkan".
+  const [lastSyncedAt, setLastSyncedAt] = useState<string>(() => new Date().toISOString());
 
   useEffect(() => {
     let cancelled = false;
     async function hydrate() {
       try {
         if (getSupabase() === null) {
-          // No DB configured → seed dummy so the UI stays alive in dev.
+          // No DB configured → start empty; the UI shows its empty states.
           dispatch({ type: "REPLACE", deals: INITIAL_DEALS, tasks: INITIAL_TASKS });
-          if (!cancelled) setLoading(false);
+          if (!cancelled) {
+            setLastSyncedAt(new Date().toISOString());
+            setLoading(false);
+          }
           return;
         }
         const { deals, tasks } = await db.loadDeals();
         if (cancelled) return;
-        // Begin empty: if DB is truly empty, keep it empty (no dummy fallback).
         dispatch({ type: "REPLACE", deals, tasks });
+        setLastSyncedAt(new Date().toISOString());
         setLoading(false);
       } catch (e) {
         console.error("[CLOSER] hydrate failed:", e);
-        dispatch({ type: "REPLACE", deals: INITIAL_DEALS, tasks: INITIAL_TASKS });
-        if (!cancelled) setLoading(false);
+        dispatch({ type: "REPLACE", deals: [], tasks: [] });
+        if (!cancelled) {
+          setLastSyncedAt(new Date().toISOString());
+          setLoading(false);
+        }
       }
     }
     hydrate();
@@ -200,60 +274,32 @@ export function CloserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Write-through on every mutation (optimistic UI stays as-is).
-  const dispatchWithPersistence = (action: CloserAction) => {
-    switch (action.type) {
-      case "ADD_DEAL":
-        dispatch(action);
-        db.addDeal(action.deal);
-        break;
-      case "UPDATE_DEAL":
-        dispatch(action);
-        db.updateDeal(action.id, action.patch);
-        break;
-      case "MOVE_DEAL":
-        dispatch(action);
-        db.updateDeal(action.id, { stage: action.stage });
-        break;
-      case "DELETE_DEAL":
-        dispatch(action);
-        db.deleteDeal(action.id);
-        break;
-      case "ADD_NOTE":
-        dispatch(action);
-        db.addNote(action.dealId, {
-          id: action.noteId,
-          text: action.text,
-          createdAt: new Date().toISOString(),
-        });
-        break;
-      case "ADD_DOCUMENT":
-        dispatch(action);
-        db.addDocument(action.dealId, action.doc);
-        break;
-      case "REMOVE_DOCUMENT":
-        dispatch(action);
-        db.removeDocument(action.docId);
-        break;
-      case "ADD_TASK":
-        dispatch(action);
-        db.addTask(action.task);
-        break;
-      case "TOGGLE_TASK": {
-        const t = state.tasks.find((x) => x.id === action.id);
-        dispatch(action);
-        if (t) db.toggleTask(action.id, !t.done);
-        break;
-      }
-      case "DELETE_TASK":
-        dispatch(action);
-        db.deleteTask(action.id);
-        break;
-      case "REPLACE":
-        // Initial hydration only — nothing to persist.
-        dispatch(action);
-        break;
-    }
-  };
+  // `syncing` counts in-flight DB writes — drives the live sync indicator.
+  // Stable identity: reads latest state from a ref so the memo below doesn't
+  // need to re-create dispatch on every state change.
+  const [syncing, setSyncing] = useState(0);
+  const syncingRef = useRef(0);
+  const bumpSyncing = useCallback((delta: number) => {
+    syncingRef.current = Math.max(0, syncingRef.current + delta);
+    setSyncing(syncingRef.current);
+  }, []);
+
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const dispatchWithPersistence = useCallback(
+    (action: CloserAction) => {
+      dispatch(action);
+      const pending = persistAction(action, stateRef);
+      if (!pending) return;
+      bumpSyncing(+1);
+      pending
+        .then((ok) => {
+          if (ok) setLastSyncedAt(new Date().toISOString());
+        })
+        .finally(() => bumpSyncing(-1));
+    },
+    [bumpSyncing]
+  );
 
   const value = useMemo<CloserContextValue>(
     () => ({
@@ -261,8 +307,9 @@ export function CloserProvider({ children }: { children: ReactNode }) {
       dispatch: dispatchWithPersistence,
       dealById: (id) => state.deals.find((d) => d.id === id),
       loading,
+      meta: { lastSyncedAt, syncing },
     }),
-    [state, loading]
+    [state, loading, lastSyncedAt, syncing, dispatchWithPersistence]
   );
 
   return (

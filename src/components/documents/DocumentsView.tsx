@@ -2,9 +2,12 @@
 
 import { useMemo, useState } from "react";
 import {
+  ChevronDown,
   Download,
   ExternalLink,
+  Eye,
   FileText,
+  FileUp,
   FolderOpen,
   Search,
 } from "lucide-react";
@@ -13,6 +16,8 @@ import { useUI } from "@/state/UIContext";
 import { DOC_CATEGORY_META } from "@/lib/stages";
 import { formatDateShort } from "@/lib/format";
 import type { DealDocument, DocCategory } from "@/lib/types";
+import PdfUploader from "@/components/documents/PdfUploader";
+import PdfPreviewModal from "@/components/documents/PdfPreviewModal";
 
 interface FlatDoc extends DealDocument {
   dealId: string;
@@ -29,10 +34,17 @@ const CATEGORY_ORDER: (DocCategory | "all")[] = [
 ];
 
 export default function DocumentsView() {
-  const { deals } = useCloser();
+  const { deals, dispatch } = useCloser();
   const { openDeal } = useUI();
   const [query, setQuery] = useState("");
   const [cat, setCat] = useState<DocCategory | "all">("all");
+  const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [preview, setPreview] = useState<{ name: string; url: string } | null>(
+    null
+  );
+
+  const isViewable = (d: DealDocument) =>
+    d.url !== "#" && /^https?:\/\//i.test(d.url);
 
   const allDocs = useMemo<FlatDoc[]>(
     () =>
@@ -67,47 +79,68 @@ export default function DocumentsView() {
   return (
     <div className="space-y-4">
       {/* header */}
-      <div className="min-w-0">
-        <h2 className="text-xl font-extrabold tracking-tight text-content-primary md:text-2xl">
-          Document Hub
-        </h2>
-        <p className="text-sm text-content-secondary">
-          {allDocs.length} dokumen di seluruh pipeline · quotation, spek teknis,
-          BAST &amp; SPK
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-extrabold tracking-tight text-content-primary">
+            Document Hub
+          </h2>
+          <p className="text-sm text-content-secondary">
+            {allDocs.length} dokumen · quotation, spek teknis, BAST &amp; SPK
+          </p>
+        </div>
+        <button
+          onClick={() => setUploaderOpen(true)}
+          disabled={deals.length === 0}
+          className="btn-primary inline-flex items-center gap-2 px-3 py-1.5 text-xs disabled:opacity-50"
+          title={
+            deals.length === 0 ? "Buat deal terlebih dahulu." : "Upload PDF"
+          }
+        >
+          <FileUp className="h-3.5 w-3.5" /> Upload PDF
+        </button>
       </div>
 
-      {/* search + category chips */}
-      <div className="space-y-3">
-        <div className="relative">
+      <PdfUploader
+        open={uploaderOpen}
+        onClose={() => setUploaderOpen(false)}
+        deals={deals}
+        onUploaded={(dealId, doc) =>
+          dispatch({ type: "ADD_DOCUMENT", dealId, doc })
+        }
+      />
+      <PdfPreviewModal doc={preview} onClose={() => setPreview(null)} />
+
+      {/* search + category filter */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-content-muted" />
           <input
             className="field-input pl-9"
-            placeholder="Cari dokumen, perusahaan, atau proyek…"
+            placeholder="Cari dokumen…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
-        <div className="no-scrollbar flex gap-2 overflow-x-auto pb-1">
-          {CATEGORY_ORDER.map((c) => {
-            const active = cat === c;
-            const label =
-              c === "all" ? "Semua" : DOC_CATEGORY_META[c]?.label ?? c;
-            return (
-              <button
-                key={c}
-                onClick={() => setCat(c)}
-                className={
-                  "shrink-0 rounded-full border px-3 py-1 text-xs font-semibold transition-colors " +
-                  (active
-                    ? "border-accent bg-accent-soft text-accent"
-                    : "border-line bg-ink-surface text-content-secondary hover:border-line-muted hover:text-content-primary")
-                }
-              >
-                {label} ({countOf(c)})
-              </button>
-            );
-          })}
+        <div className="relative shrink-0">
+          <select
+            value={cat}
+            onChange={(e) => setCat(e.target.value as DocCategory | "all")}
+            aria-label="Filter kategori"
+            className={
+              "w-full appearance-none rounded-lg border py-2 pl-3 pr-8 text-xs font-semibold transition-colors focus:outline-none sm:w-auto " +
+              (cat === "all"
+                ? "border-line bg-ink-surface text-content-secondary hover:border-line-muted"
+                : "border-accent/50 bg-accent-soft text-accent")
+            }
+          >
+            {CATEGORY_ORDER.map((c) => (
+              <option key={c} value={c}>
+                {(c === "all" ? "Semua Kategori" : DOC_CATEGORY_META[c]?.label ?? c) +
+                  ` (${countOf(c)})`}
+              </option>
+            ))}
+          </select>
+          <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-content-muted" />
         </div>
       </div>
 
@@ -117,7 +150,7 @@ export default function DocumentsView() {
           <FolderOpen className="h-8 w-8" />
           <p className="text-sm">
             {allDocs.length === 0
-              ? "Belum ada dokumen. Tambahkan lewat drawer deal."
+              ? "Belum ada dokumen."
               : "Tidak ada dokumen yang cocok dengan filter."}
           </p>
         </div>
@@ -128,7 +161,7 @@ export default function DocumentsView() {
             return (
               <li
                 key={`${d.dealId}-${d.id}`}
-                className="glass-card flex min-w-0 items-center gap-2 p-3 sm:gap-3"
+                className="glass-card flex items-center gap-3 p-3"
               >
                 <span
                   className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg border ${meta?.badge}`}
@@ -136,46 +169,57 @@ export default function DocumentsView() {
                   <FileText className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  {/* Long filenames wrap to two lines instead of truncating */}
-                  <p className="line-clamp-2 break-words text-sm font-semibold leading-snug text-content-primary">
+                  <button
+                    type="button"
+                    disabled={!isViewable(d)}
+                    onClick={() => setPreview({ name: d.name, url: d.url })}
+                    className="block w-full truncate text-left text-sm font-semibold text-content-primary enabled:hover:text-accent disabled:cursor-default"
+                    title={isViewable(d) ? "Pratinjau dokumen" : undefined}
+                  >
                     {d.name}
-                  </p>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-content-muted">
+                  </button>
+                  <div className="flex items-center gap-2 text-[11px] text-content-muted">
                     <button
                       onClick={() => openDeal(d.dealId)}
-                      className="min-h-[32px] font-medium text-accent hover:underline"
+                      className="font-medium text-accent hover:underline"
                     >
                       {d.company}
                     </button>
-                    <span className="hidden sm:inline">·</span>
-                    <span className="hidden truncate sm:inline">{d.dealTitle}</span>
+                    <span>·</span>
+                    <span className="truncate">{d.dealTitle}</span>
                     <span>·</span>
                     <span>{formatDateShort(d.uploadedAt)}</span>
                   </div>
                 </div>
-                <span
-                  className={`badge shrink-0 border sm:inline-flex ${meta?.badge}`}
-                >
+                <span className={`badge hidden border sm:inline-flex ${meta?.badge}`}>
                   {meta?.label}
                 </span>
-                {d.url !== "#" && (
-                  <div className="grid shrink-0 grid-flow-col grid-cols-[repeat(auto-max,minmax(0,44px))] items-center">
-                    <a
-                      href={d.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="grid h-11 w-11 place-items-center rounded-lg text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
-                      title="Buka tautan"
-                      aria-label="Buka tautan dokumen"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
+                {isViewable(d) && (
+                  <div className="flex shrink-0 gap-1">
+                    {d.source === "upload" ? (
+                      <button
+                        onClick={() => setPreview({ name: d.name, url: d.url })}
+                        className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary"
+                        title="Pratinjau PDF"
+                      >
+                        <Eye className="h-4 w-4" />
+                      </button>
+                    ) : (
+                      <a
+                        href={d.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary"
+                        title="Buka tautan"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </a>
+                    )}
                     <a
                       href={d.url}
                       download
-                      className="grid h-11 w-11 place-items-center rounded-lg text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+                      className="rounded-lg p-2 text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary"
                       title="Unduh"
-                      aria-label="Unduh dokumen"
                     >
                       <Download className="h-4 w-4" />
                     </a>

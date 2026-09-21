@@ -21,7 +21,7 @@ export default function DailyActionBanner() {
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <BellRing className="h-5 w-5 shrink-0 text-success" />
             <h3 className="min-w-0 text-base font-bold text-content-primary md:text-lg">
-              Agenda Follow-up Hari Ini
+              Agenda Hari Ini
             </h3>
             <span className="badge border border-success/30 bg-success-soft text-success">
               {todays.length} task
@@ -31,7 +31,7 @@ export default function DailyActionBanner() {
           <ul className="mt-3 space-y-1.5">
             {todays.length === 0 && (
               <li className="text-sm text-content-secondary">
-                Tidak ada follow-up untuk hari ini. Gas cari lead baru! 🚀
+                Tidak ada follow-up terjadwal hari ini.
               </li>
             )}
             {todays.map((t) => {
@@ -71,11 +71,6 @@ export default function DailyActionBanner() {
             })}
           </ul>
 
-          {todays.some((t) => !t.done) && (
-            <p className="mt-2 text-[11px] text-content-muted">
-              Klik lingkaran untuk menandai selesai.
-            </p>
-          )}
         </div>
 
         {/* Primary CTA */}

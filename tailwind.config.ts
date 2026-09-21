@@ -94,11 +94,17 @@ const config: Config = {
           "0%, 100%": { boxShadow: "0 0 0 0 rgba(184,92,85,0.4)" },
           "50%": { boxShadow: "0 0 0 6px rgba(184,92,85,0)" },
         },
+        // Live-sync beacon — soft sage halo that expands and fades out.
+        "sync-ping": {
+          "0%": { transform: "scale(1)", opacity: "0.7" },
+          "70%, 100%": { transform: "scale(2.6)", opacity: "0" },
+        },
       },
       animation: {
         "fade-in": "fade-in 0.3s ease-out",
         "slide-in-right": "slide-in-right 0.3s cubic-bezier(0.16,1,0.3,1)",
         "pulse-ring": "pulse-ring 1.6s ease-in-out infinite",
+        "sync-ping": "sync-ping 1.2s cubic-bezier(0,0,0.2,1) infinite",
       },
     },
   },

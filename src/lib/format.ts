@@ -2,19 +2,45 @@
 
 import type { Deal } from "./types";
 
+// ── Simulasi komersial (HPS-driven) ───────────────────────────
+// HPS = patokan budget end user (umumnya sudah termasuk PPN 11%).
+// Dari HPS + margin target, sales membayangkan: harga jual ideal di
+// bawah HPS, dan COGS maksimal yang layak di-bid ke distributor.
+// Ini alat bantu simulasi — angka final tetap hasil diskusi internal.
+
+/** PPN yang diasumsikan sudah termasuk di dalam HPS pemerintah. */
+export const PPN_RATE = 0.11;
+
+/** Batas aman penawaran: sedikit di bawah HPS supaya tetap menang bid. */
+const SAFETY_FACTOR = 0.98;
+
+/**
+ * Hasil simulasi dari HPS + margin target (%).
+ * - sellingPrice: perkiraan harga jual terbaik (di bawah HPS)
+ * - cogsBid: harga maksimal ke distributor agar margin target masih tercapai
+ * - profit: selisih harga jual − COGS bid
+ */
+export function simulateFromHps(hps: number, marginPct: number) {
+  const sellingPrice = Math.round(hps * SAFETY_FACTOR);
+  const cogsBid = Math.round(sellingPrice / (1 + marginPct / 100) / (1 + PPN_RATE));
+  return { sellingPrice, cogsBid, profit: sellingPrice - cogsBid };
+}
+
 /**
  * Harga jual efektif.
- * Kalau COGS/HPS sudah diisi → hitung otomatis: cogs × (1 + margin%).
- * Kalau belum → pakai `value` manual (boleh 0 = belum ada estimasi sama sekali).
+ * HPS terisi → hasil simulasi (≈ di bawah HPS).
+ * HPS kosong → `value` manual (boleh 0 = oppty masih gelap).
  */
-export function sellingPrice(d: Pick<Deal, "cogs" | "marginPct" | "value">): number {
-  if (d.cogs > 0) return Math.round(d.cogs * (1 + d.marginPct / 100));
+export function sellingPrice(
+  d: Pick<Deal, "hps" | "marginPct" | "value">
+): number {
+  if (d.hps > 0) return simulateFromHps(d.hps, d.marginPct).sellingPrice;
   return d.value;
 }
 
 /** true kalau deal ini belum punya angka apa pun (oppty gelap). */
-export function hasNoEstimate(d: Pick<Deal, "cogs" | "value">): boolean {
-  return d.cogs <= 0 && d.value <= 0;
+export function hasNoEstimate(d: Pick<Deal, "hps" | "value">): boolean {
+  return d.hps <= 0 && d.value <= 0;
 }
 
 const idrFull = new Intl.NumberFormat("id-ID", {
@@ -96,6 +122,14 @@ export function relativeDayLabel(iso: string): string {
   return `${Math.abs(diff)} hari lalu`;
 }
 
+/** Local calendar date as "YYYY-MM-DD". */
+export function todayISO(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(
+    now.getDate()
+  ).padStart(2, "0")}`;
+}
+
 export function startOfDay(d: Date): Date {
   const x = new Date(d);
   x.setHours(0, 0, 0, 0);
@@ -151,13 +185,6 @@ export const TASK_STATUS_META: Record<
   },
 };
 
-/** Build an ISO datetime offset from now (for dummy data). */
-export function daysFromNow(days: number, hour = 9, minute = 0): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  d.setHours(hour, minute, 0, 0);
-  return d.toISOString();
-}
 
 export function uid(prefix = "id"): string {
   // Text ids (Supabase columns are `text`). The random part uses

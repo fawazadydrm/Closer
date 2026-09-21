@@ -8,7 +8,7 @@ interface DrawerProps {
   onClose: () => void;
   title: ReactNode;
   subtitle?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
 }
 
 /** Right-sliding detail drawer. Renders nothing when closed. */

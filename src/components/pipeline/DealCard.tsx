@@ -6,9 +6,10 @@ import {
   CalendarClock,
   Paperclip,
   GripVertical,
+  Link2,
 } from "lucide-react";
 import type { Deal } from "@/lib/types";
-import { PRIORITY_META } from "@/lib/stages";
+import { DEAL_TYPE_META, PRIORITY_META } from "@/lib/stages";
 import { formatIDRCompact, formatDateShort, hasNoEstimate, sellingPrice } from "@/lib/format";
 
 interface DealCardProps {
@@ -26,6 +27,7 @@ export default function DealCard({
   onDragStart,
 }: DealCardProps) {
   const p = PRIORITY_META[deal.priority];
+  const t = DEAL_TYPE_META[deal.dealType];
 
   return (
     <div
@@ -41,7 +43,13 @@ export default function DealCard({
     >
       {/* top row: priority + drag handle */}
       <div className="mb-1.5 flex items-center justify-between gap-2">
-        <span className={`badge border ${p.badge}`}>{p.label}</span>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <span className={`badge border ${p.badge} shrink-0`}>{p.label}</span>
+          <span className={`badge border truncate ${t.badge}`}>{t.shortLabel}</span>
+          {deal.landingPageUrl && (
+            <Link2 className="h-3.5 w-3.5 shrink-0 text-accent" aria-label="Punya landing page" />
+          )}
+        </span>
         {draggable && (
           <GripVertical className="h-4 w-4 shrink-0 text-content-muted md:opacity-0 md:transition-opacity md:group-hover:opacity-100" />
         )}

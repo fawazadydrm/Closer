@@ -31,3 +31,6 @@ export const T = {
   notes: "deal_notes",
   tasks: "tasks",
 } as const;
+
+// Public bucket for uploaded PDFs (created by supabase/schema.sql).
+export const STORAGE_BUCKET = "documents";

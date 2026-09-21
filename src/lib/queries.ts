@@ -1,7 +1,9 @@
 import { getSupabase, T } from "./supabase";
+import { storagePathFromUrl } from "./storage";
 import type {
   Deal,
   DealDocument,
+  DealType,
   NoteEntry,
   StageId,
   TaskReminder,
@@ -16,10 +18,13 @@ interface DealRow {
   contact_phone: string;
   contact_role: string | null;
   value: number;
+  hps?: number | null;
   cogs?: number | null;
   margin_pct: number;
   stage: StageId;
   priority: Deal["priority"];
+  deal_type?: DealType | null;
+  landing_page_url?: string | null;
   target_close_date: string;
   industry: string;
   owner: string;
@@ -53,6 +58,12 @@ interface TaskRow {
   channel: TaskReminder["channel"];
 }
 
+/** A deals row with its nested documents/notes (from the relational select). */
+interface DealWithRelationsRow extends DealRow {
+  deal_documents: DocRow[] | null;
+  deal_notes: NoteRow[] | null;
+}
+
 // ── Row → type ─────────────────────────────────────────────────
 function rowToDeal(r: DealRow): Deal {
   return {
@@ -65,10 +76,13 @@ function rowToDeal(r: DealRow): Deal {
       role: r.contact_role ?? undefined,
     },
     value: Number(r.value) || 0,
+    hps: Number(r.hps) || 0,
     cogs: Number(r.cogs) || 0,
     marginPct: Number(r.margin_pct) || 0,
     stage: r.stage,
     priority: r.priority,
+    dealType: r.deal_type ?? "sales_langsung",
+    landingPageUrl: r.landing_page_url ?? "",
     targetCloseDate: r.target_close_date,
     industry: r.industry,
     owner: r.owner,
@@ -86,6 +100,9 @@ function rowToDoc(r: DocRow): DealDocument {
     url: r.url,
     source: r.source,
     sizeLabel: r.size_label ?? undefined,
+    // Derive the storage path (for cleanup) from our own public URLs.
+    storagePath:
+      r.source === "upload" ? storagePathFromUrl(r.url) ?? undefined : undefined,
     uploadedAt: r.uploaded_at,
   };
 }
@@ -114,8 +131,8 @@ async function loadDeals(
   if (!db) return { deals: [], tasks: [] };
   const q = db.from(T.deals).select(
     `id, title, company, contact_name, contact_phone, contact_role,
-     value, cogs, margin_pct, stage, priority, target_close_date, industry, owner,
-     created_at,
+     value, hps, cogs, margin_pct, stage, priority, deal_type, landing_page_url,
+     target_close_date, industry, owner, created_at,
      deal_documents(id, deal_id, name, category, url, source, size_label, uploaded_at),
      deal_notes(id, deal_id, text, created_at)`
   );
@@ -127,7 +144,7 @@ async function loadDeals(
     return { deals: [], tasks: [] };
   }
 
-  const deals: Deal[] = (data ?? []).map((row: any) => {
+  const deals: Deal[] = ((data ?? []) as DealWithRelationsRow[]).map((row) => {
     const deal = rowToDeal(row);
     deal.documents = (row.deal_documents ?? []).sort((a: DocRow, b: DocRow) =>
       b.uploaded_at.localeCompare(a.uploaded_at)
@@ -161,10 +178,13 @@ async function addDeal(deal: Deal): Promise<boolean> {
     contact_phone: deal.contact.phone,
     contact_role: deal.contact.role ?? null,
     value: deal.value,
+    hps: deal.hps,
     cogs: deal.cogs,
     margin_pct: deal.marginPct,
     stage: deal.stage,
     priority: deal.priority,
+    deal_type: deal.dealType,
+    landing_page_url: deal.landingPageUrl || null,
     target_close_date: deal.targetCloseDate,
     industry: deal.industry,
     owner: deal.owner,
@@ -177,14 +197,17 @@ async function addDeal(deal: Deal): Promise<boolean> {
 async function updateDeal(id: string, patch: Partial<Deal>): Promise<boolean> {
   const db = getSupabase();
   if (!db) return false;
-  const row: Record<string, any> = {};
+  const row: Record<string, unknown> = {};
   if (patch.title !== undefined) row.title = patch.title;
   if (patch.company !== undefined) row.company = patch.company;
   if (patch.value !== undefined) row.value = patch.value;
+  if (patch.hps !== undefined) row.hps = patch.hps;
   if (patch.cogs !== undefined) row.cogs = patch.cogs;
   if (patch.marginPct !== undefined) row.margin_pct = patch.marginPct;
   if (patch.stage !== undefined) row.stage = patch.stage;
   if (patch.priority !== undefined) row.priority = patch.priority;
+  if (patch.dealType !== undefined) row.deal_type = patch.dealType;
+  if (patch.landingPageUrl !== undefined) row.landing_page_url = patch.landingPageUrl || null;
   if (patch.targetCloseDate !== undefined) row.target_close_date = patch.targetCloseDate;
   if (patch.industry !== undefined) row.industry = patch.industry;
   if (patch.owner !== undefined) row.owner = patch.owner;

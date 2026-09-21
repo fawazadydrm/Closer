@@ -1,32 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarDays, Sparkles } from "lucide-react";
-import { formatDateLong } from "@/lib/format";
+import { todayISO } from "@/lib/format";
 
+/** Time-aware greeting + today's date in Indonesian locale. */
 export default function Greeting() {
-  const [now, setNow] = useState<Date | null>(null);
-
-  // Hydrate after mount to avoid SSR/client date mismatch.
-  useEffect(() => setNow(new Date()), []);
+  const h = new Date().getHours();
+  const part =
+    h < 11 ? "Pagi" : h < 15 ? "Siang" : h < 19 ? "Sore" : "Malam";
+  const today = new Date(todayISO() + "T00:00:00");
 
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-accent">
-        <Sparkles className="h-4 w-4" />
-        Executive Summary
-      </div>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-extrabold tracking-tight text-content-primary md:text-3xl">
-            Semangat Fawaz, siap closing deal hari ini?
-          </h2>
-          <p className="mt-1 flex items-center gap-2 text-sm text-content-secondary">
-            <CalendarDays className="h-4 w-4 text-accent" />
-            {now ? formatDateLong(now.toISOString()) : "Memuat tanggal…"}
-          </p>
-        </div>
-      </div>
+    <section className="min-w-0">
+      <p className="text-sm font-medium text-content-secondary md:text-base">
+        {part}, <span className="font-semibold text-accent">Fawaz</span>
+      </p>
+      <h2 className="mt-0.5 text-xl font-extrabold tracking-tight text-content-primary sm:text-2xl lg:text-3xl">
+        Ringkasan Pipeline
+      </h2>
+      <p className="mt-1 text-xs text-content-muted md:text-sm">
+        {today.toLocaleDateString("id-ID", {
+          weekday: "long",
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        })}
+      </p>
     </section>
   );
 }

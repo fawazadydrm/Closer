@@ -1,7 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Building2, LayoutList, FolderOpen, StickyNote, BellRing } from "lucide-react";
+import {
+  Building2,
+  LayoutList,
+  FolderOpen,
+  StickyNote,
+  BellRing,
+  ExternalLink,
+} from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FieldForms from "./FieldForms";
 import DocumentHub from "./DocumentHub";
@@ -9,8 +16,14 @@ import NotesPanel from "./NotesPanel";
 import DealTasksPanel from "./DealTasksPanel";
 import { useCloser } from "@/state/CloserContext";
 import { useUI } from "@/state/UIContext";
-import { stageById, STAGE_ACCENT } from "@/lib/stages";
-import { formatIDR, formatIDRCompact, hasNoEstimate, sellingPrice } from "@/lib/format";
+import { DEAL_TYPE_META, stageById, STAGE_ACCENT } from "@/lib/stages";
+import {
+  formatIDR,
+  formatIDRCompact,
+  hasNoEstimate,
+  sellingPrice,
+  simulateFromHps,
+} from "@/lib/format";
 
 type Tab = "overview" | "documents" | "notes" | "tasks";
 
@@ -28,10 +41,11 @@ export default function DealDrawer() {
 
   const deal = selectedDealId ? dealById(selectedDealId) : undefined;
 
-  if (!deal) return <Drawer open={false} onClose={closeDeal} title="" children={null} />;
+  if (!deal) return <Drawer open={false} onClose={closeDeal} title="" />;
 
   const stage = stageById(deal.stage);
   const accent = STAGE_ACCENT[stage.accent];
+  const typeMeta = DEAL_TYPE_META[deal.dealType];
 
   return (
     <Drawer
@@ -44,37 +58,70 @@ export default function DealDrawer() {
           <span className={`badge border ${accent.border} ${accent.bg} ${accent.text}`}>
             {stage.shortLabel}
           </span>
+          <span className={`badge border ${typeMeta.badge}`}>{typeMeta.label}</span>
+          {deal.landingPageUrl && (
+            <a
+              href={deal.landingPageUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="inline-flex items-center gap-1 font-semibold text-accent hover:underline"
+            >
+              <ExternalLink className="h-3 w-3" /> Landing Page
+            </a>
+          )}
         </span>
       }
     >
-      {/* value banner — wraps on narrow drawers so big IDR figures never clip */}
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-x-4 gap-y-2 rounded-xl border border-line bg-accent-soft px-4 py-3">
-        <div className="min-w-0">
-          <p className="text-[10px] uppercase tracking-wide text-content-secondary">
-            {hasNoEstimate(deal) ? "Belum ada budget" : "Harga Jual"}
-          </p>
-          <p className="break-words text-lg font-extrabold tabular-nums text-content-primary sm:text-xl">
-            {hasNoEstimate(deal) ? "—" : formatIDR(sellingPrice(deal))}
-          </p>
-          {!hasNoEstimate(deal) && deal.cogs > 0 && (
-            <p className="mt-0.5 text-[10px] text-content-muted">
-              HPS {formatIDRCompact(deal.cogs)} × (1 + {deal.marginPct}%)
+      {/* value banner — hasil simulasi HPS */}
+      <div className="mb-4 rounded-xl border border-line bg-accent-soft px-4 py-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-content-secondary">
+              {hasNoEstimate(deal) ? "Belum ada budget" : "Harga Jual (simulasi)"}
             </p>
-          )}
+            <p className="text-xl font-extrabold tabular-nums text-content-primary">
+              {hasNoEstimate(deal) ? "—" : formatIDR(sellingPrice(deal))}
+            </p>
+          </div>
+          <div className="text-right">
+            <p className="text-[10px] uppercase tracking-wide text-content-secondary">
+              Margin Target
+            </p>
+            <p className="text-lg font-bold tabular-nums text-success">
+              {deal.hps > 0 ? `${deal.marginPct}%` : "—"}
+            </p>
+          </div>
         </div>
-        <div className="ml-auto text-right">
-          <p className="text-[10px] uppercase tracking-wide text-content-secondary">Margin</p>
-          <p className="text-lg font-bold tabular-nums text-success">
-            {deal.cogs > 0 ? `${deal.marginPct}%` : "—"}
-          </p>
-        </div>
+        {deal.hps > 0 &&
+          (() => {
+            const sim = simulateFromHps(deal.hps, deal.marginPct);
+            return (
+              <div className="mt-2 grid grid-cols-3 gap-2 border-t border-accent/20 pt-2 text-center">
+                <div>
+                  <p className="text-[9px] uppercase tracking-wide text-content-muted">HPS</p>
+                  <p className="text-xs font-bold tabular-nums text-content-primary">
+                    {formatIDRCompact(deal.hps)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-wide text-content-muted">
+                    Bid COGS
+                  </p>
+                  <p className="text-xs font-bold tabular-nums text-content-primary underline decoration-accent/50 decoration-2 underline-offset-2">
+                    {formatIDRCompact(sim.cogsBid)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] uppercase tracking-wide text-content-muted">Profit</p>
+                  <p className="text-xs font-bold tabular-nums text-content-primary">
+                    {formatIDRCompact(sim.profit)}
+                  </p>
+                </div>
+              </div>
+            );
+          })()}
       </div>
-      {hasNoEstimate(deal) && (
-        <p className="mb-4 -mt-2 text-[11px] text-content-muted">
-          Isi HPS &amp; margin di tab Overview begitu harga distributor turun.
-        </p>
-      )}
-
       {/* tabs */}
       <div className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-line bg-surface-warm p-1 no-scrollbar">
         {TABS.map((t) => {
@@ -85,7 +132,7 @@ export default function DealDrawer() {
               key={t.id}
               onClick={() => setTab(t.id)}
               className={
-                "flex min-h-[38px] flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors " +
+                "flex flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors " +
                 (active
                   ? "bg-white text-content-primary shadow-card"
                   : "text-content-secondary hover:text-content-primary")

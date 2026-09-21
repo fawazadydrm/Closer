@@ -1,4 +1,4 @@
-import type { PipelineStage, StageId } from "./types";
+import type { DealType, PipelineStage, StageId } from "./types";
 
 export const PIPELINE_STAGES: PipelineStage[] = [
   {
@@ -126,6 +126,30 @@ export const DOC_CATEGORY_META: Record<
     badge: "border-success/30 bg-success-soft text-success",
   },
 };
+
+/** How the deal is being handled — chip label + restrained badge style. */
+export const DEAL_TYPE_META: Record<
+  DealType,
+  { label: string; shortLabel: string; badge: string }
+> = {
+  tender: {
+    label: "Tender",
+    shortLabel: "Tender",
+    badge: "border-accent/30 bg-accent-soft text-accent",
+  },
+  mini_kompetisi: {
+    label: "Mini Kompetisi",
+    shortLabel: "Mikom",
+    badge: "border-gold/40 bg-gold-soft text-gold",
+  },
+  sales_langsung: {
+    label: "Sales Langsung",
+    shortLabel: "Langsung",
+    badge: "border-line-muted bg-ink-overlay text-content-secondary",
+  },
+};
+
+export const DEAL_TYPES: DealType[] = ["tender", "mini_kompetisi", "sales_langsung"];
 
 export const PRIORITY_META: Record<
   string,

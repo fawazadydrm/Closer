@@ -6,6 +6,7 @@ import {
   Link2,
   UploadCloud,
   ExternalLink,
+  Eye,
   Trash2,
   FileText,
   Download,
@@ -15,6 +16,8 @@ import { DOC_CATEGORY_META } from "@/lib/stages";
 import { useCloser } from "@/state/CloserContext";
 import { useUI } from "@/state/UIContext";
 import { uid, formatDateShort } from "@/lib/format";
+import PdfUploader from "@/components/documents/PdfUploader";
+import PdfPreviewModal from "@/components/documents/PdfPreviewModal";
 
 const CATEGORY_ORDER: DocCategory[] = [
   "quotation",
@@ -27,45 +30,49 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
   const { dispatch } = useCloser();
   const { showToast } = useUI();
 
-  const [openForm, setOpenForm] = useState<"link" | "upload" | null>(null);
+  const [openForm, setOpenForm] = useState<"link" | null>(null);
   const [url, setUrl] = useState("");
   const [name, setName] = useState("");
   const [category, setCategory] = useState<DocCategory>("quotation");
-  const [fileName, setFileName] = useState("");
+  const [uploaderOpen, setUploaderOpen] = useState(false);
+  const [preview, setPreview] = useState<{ name: string; url: string } | null>(
+    null
+  );
 
   const reset = () => {
     setUrl("");
     setName("");
-    setFileName("");
     setOpenForm(null);
   };
 
-  const addDoc = (src: DealDocument["source"]) => {
-    let docName = name.trim();
-    if (!docName && fileName.trim()) docName = fileName.trim();
-    if (!docName || !src) return;
-    if (src !== "upload" && !url.trim()) {
-      showToast("Isi tautan cloud terlebih dahulu.");
+  const addDoc = () => {
+    const docName = name.trim();
+    if (!docName || !url.trim()) {
+      showToast("Isi nama dan tautan cloud terlebih dahulu.");
       return;
     }
-    const resolvedSource: DealDocument["source"] =
-      src === "upload"
-        ? "upload"
-        : /dropbox\.com/i.test(url)
-        ? "dropbox"
-        : "drive";
+    const resolvedSource: DealDocument["source"] = /dropbox\.com/i.test(url)
+      ? "dropbox"
+      : "drive";
     const doc: DealDocument = {
       id: uid("doc"),
       name: docName,
       category,
-      url: src === "upload" ? "#" : url.trim(),
+      url: url.trim(),
       source: resolvedSource,
-      sizeLabel: src === "upload" ? "Menunggu upload (placeholder)" : undefined,
       uploadedAt: new Date().toISOString(),
     };
     dispatch({ type: "ADD_DOCUMENT", dealId: deal.id, doc });
     showToast("Dokumen ditambahkan.");
     reset();
+  };
+
+  const isViewable = (d: DealDocument) =>
+    d.url !== "#" && /^https?:\/\//i.test(d.url);
+
+  const removeDoc = (d: DealDocument) => {
+    // Storage-object cleanup is handled by REMOVE_DOCUMENT in CloserContext.
+    dispatch({ type: "REMOVE_DOCUMENT", dealId: deal.id, docId: d.id });
   };
 
   const metaIcon = (cat: string) => {
@@ -87,13 +94,24 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
             <Link2 className="h-3.5 w-3.5" /> Tautan
           </button>
           <button
-            onClick={() => setOpenForm(openForm === "upload" ? null : "upload")}
+            onClick={() => setUploaderOpen(true)}
             className="btn-secondary px-2.5 py-1.5 text-xs"
           >
-            <UploadCloud className="h-3.5 w-3.5" /> Upload
+            <UploadCloud className="h-3.5 w-3.5" /> Upload PDF
           </button>
         </div>
       </div>
+
+      <PdfUploader
+        open={uploaderOpen}
+        onClose={() => setUploaderOpen(false)}
+        deals={[deal]}
+        defaultDealId={deal.id}
+        onUploaded={(dealId, doc) =>
+          dispatch({ type: "ADD_DOCUMENT", dealId, doc })
+        }
+      />
+      <PdfPreviewModal doc={preview} onClose={() => setPreview(null)} />
 
       {/* add form */}
       {openForm && (
@@ -101,29 +119,16 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
           <div className="grid gap-2">
             <input
               className="field-input"
-              placeholder="Nama dokumen (mis. Quotation_v3.pdf)"
+              placeholder="Nama dokumen"
               value={name}
               onChange={(e) => setName(e.target.value)}
             />
-            {openForm === "upload" && (
-              <div>
-                <button
-                  onClick={() => setFileName(fileName ? "" : "dummy_file.pdf")}
-                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-line-muted px-3 py-4 text-xs text-content-secondary hover:border-accent/50 hover:text-accent transition-colors"
-                >
-                  <UploadCloud className="h-4 w-4" />
-                  {fileName || "Pilih file (Supabase Storage placeholder)"}
-                </button>
-              </div>
-            )}
-            {openForm === "link" && (
-              <input
-                className="field-input"
-                placeholder="https://drive.google.com/…"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-              />
-            )}
+            <input
+              className="field-input"
+              placeholder="https://drive.google.com/…"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+            />
             <select
               className="field-input"
               value={category}
@@ -139,10 +144,7 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
             <button onClick={reset} className="btn-ghost">
               Batal
             </button>
-            <button
-              onClick={() => addDoc(openForm === "upload" ? "upload" : "drive")}
-              className="btn-primary px-3 py-1.5 text-xs"
-            >
+            <button onClick={addDoc} className="btn-primary px-3 py-1.5 text-xs">
               <Plus className="h-3.5 w-3.5" /> Tambah
             </button>
           </div>
@@ -170,9 +172,15 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
                   <FileText className="h-4 w-4" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="break-words text-xs font-semibold leading-snug text-content-primary">
+                  <button
+                    type="button"
+                    disabled={!isViewable(d)}
+                    onClick={() => setPreview({ name: d.name, url: d.url })}
+                    className="block w-full break-words text-left text-xs font-semibold leading-snug text-content-primary enabled:hover:text-accent disabled:cursor-default"
+                    title={isViewable(d) ? "Pratinjau PDF" : undefined}
+                  >
                     {d.name}
-                  </p>
+                  </button>
                   <p className="text-[10px] text-content-muted">
                     {d.source === "drive"
                       ? "Google Drive"
@@ -184,19 +192,30 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
                 </div>
                 {/* 44px tap targets via grid cells; icons stay compact */}
                 <div className="grid shrink-0 grid-flow-col grid-cols-[repeat(auto-max,minmax(0,44px))] items-center justify-end">
-                  {d.url !== "#" && (
+                  {isViewable(d) && (
                     <>
-                      <a
-                        href={d.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        onClick={(e) => e.stopPropagation()}
-                        className="grid h-11 w-11 place-items-center rounded-lg text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
-                        title="Buka tautan"
-                        aria-label="Buka tautan dokumen"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </a>
+                      {d.source === "upload" ? (
+                        <button
+                          onClick={() => setPreview({ name: d.name, url: d.url })}
+                          className="grid h-11 w-11 place-items-center rounded-lg text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+                          title="Pratinjau PDF"
+                          aria-label="Pratinjau PDF"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
+                      ) : (
+                        <a
+                          href={d.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="grid h-11 w-11 place-items-center rounded-lg text-content-secondary transition-colors hover:bg-ink-overlay hover:text-content-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20"
+                          title="Buka tautan"
+                          aria-label="Buka tautan dokumen"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </a>
+                      )}
                       <a
                         href={d.url}
                         download
@@ -210,13 +229,7 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
                     </>
                   )}
                   <button
-                    onClick={() =>
-                      dispatch({
-                        type: "REMOVE_DOCUMENT",
-                        dealId: deal.id,
-                        docId: d.id,
-                      })
-                    }
+                    onClick={() => removeDoc(d)}
                     className="grid h-11 w-11 place-items-center rounded-lg text-content-secondary transition-colors hover:bg-danger-soft hover:text-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-danger/30"
                     title="Hapus"
                     aria-label="Hapus dokumen"
@@ -232,7 +245,7 @@ export default function DocumentHub({ deal }: { deal: Deal }) {
 
       {deal.documents.length === 0 && (
         <div className="grid place-items-center rounded-xl border border-dashed border-line py-8 text-center text-xs text-content-muted">
-          Belum ada dokumen. Tambahkan tautan cloud atau upload file.
+          Belum ada dokumen.
         </div>
       )}
     </div>

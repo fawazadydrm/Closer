@@ -79,7 +79,7 @@ export default function KanbanBoard({ deals }: { deals: Deal[] }) {
               ))}
               {items.length === 0 && (
                 <div className="grid h-24 place-items-center rounded-xl border border-dashed border-line text-[11px] text-content-muted">
-                  Tarik deal ke sini
+                  —
                 </div>
               )}
             </div>

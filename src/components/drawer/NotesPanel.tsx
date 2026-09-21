@@ -29,7 +29,7 @@ export default function NotesPanel({ deal }: { deal: Deal }) {
             if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) add();
           }}
           rows={3}
-          placeholder="Tulis catatan log meeting / negosiasi…"
+          placeholder="Tulis catatan…"
           className="field-input resize-none"
         />
         <div className="mt-2 flex justify-end">

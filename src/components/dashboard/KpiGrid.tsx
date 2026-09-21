@@ -26,28 +26,25 @@ export default function KpiGrid() {
       <StatCard
         label="Active Pipeline"
         value={formatIDRCompact(pipeline)}
-        sub={noBudget > 0 ? `${noBudget} oppty menunggu harga distributor` : "Total nilai peluang aktif"}
+        sub={noBudget > 0 ? `${noBudget} deal belum diestimasi` : undefined}
         icon={Target}
         accent="blue"
       />
       <StatCard
         label="Outstanding Proposal"
         value={String(proposals)}
-        sub="Menunggu keputusan klien"
         icon={FileSignature}
         accent="amber"
       />
       <StatCard
         label="Tasks Due Today"
         value={String(dueToday)}
-        sub="Follow-up wajib hari ini"
         icon={Clock3}
         accent="indigo"
       />
       <StatCard
         label="Win Rate"
         value={`${rate}%`}
-        sub="Rasio deal closed won"
         icon={Trophy}
         accent="emerald"
       />

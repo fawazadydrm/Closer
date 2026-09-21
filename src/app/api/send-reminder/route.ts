@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       dryRun: true,
-      message: "Reminder dicatat (Telegram belum dikonfigurasi — set TELEGRAM_BOT_TOKEN & TELEGRAM_CHAT_ID).",
+      message: "Pengiriman dilewati — Telegram belum dikonfigurasi.",
       preview: text,
     });
   }

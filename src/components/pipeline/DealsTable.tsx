@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Paperclip, ChevronRight } from "lucide-react";
+import { Paperclip, ChevronRight, Link2 } from "lucide-react";
 import { useUI } from "@/state/UIContext";
-import { PIPELINE_STAGES, STAGE_ACCENT, PRIORITY_META, stageById } from "@/lib/stages";
+import { DEAL_TYPE_META, STAGE_ACCENT, PRIORITY_META, stageById } from "@/lib/stages";
 import type { Deal, StageId } from "@/lib/types";
 import { formatIDR, formatDateShort, hasNoEstimate, isSameDay, sellingPrice } from "@/lib/format";
 
@@ -14,49 +14,29 @@ interface DealsTableProps {
 export default function DealsTable({ deals }: DealsTableProps) {
   const { openDeal } = useUI();
   const [query, setQuery] = useState("");
-  const [stageFilter, setStageFilter] = useState<StageId | "all">("all");
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
-    return deals.filter((d) => {
-      const matchesStage = stageFilter === "all" || d.stage === stageFilter;
-      const matchesQ =
+    return deals.filter(
+      (d) =>
         !q ||
         d.company.toLowerCase().includes(q) ||
         d.title.toLowerCase().includes(q) ||
-        d.contact.name.toLowerCase().includes(q);
-      return matchesStage && matchesQ;
-    });
-  }, [deals, query, stageFilter]);
+        d.contact.name.toLowerCase().includes(q)
+    );
+  }, [deals, query]);
 
   const today = new Date();
 
   return (
     <div className="space-y-3">
-      {/* toolbar */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Cari perusahaan, deal, atau kontak…"
-          className="field-input max-w-sm"
-        />
-        <div className="thin-scrollbar flex gap-1 overflow-x-auto">
-          <FilterChip
-            label="Semua"
-            active={stageFilter === "all"}
-            onClick={() => setStageFilter("all")}
-          />
-          {PIPELINE_STAGES.map((s) => (
-            <FilterChip
-              key={s.id}
-              label={s.shortLabel}
-              active={stageFilter === s.id}
-              onClick={() => setStageFilter(s.id)}
-            />
-          ))}
-        </div>
-      </div>
+      {/* search only — stage/type filtering lives in the pipeline toolbar */}
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="Cari perusahaan, deal, atau kontak…"
+        className="field-input w-full max-w-sm"
+      />
 
       {/* Mobile: compact cards (priority columns first). sm+: full table. */}
       <div className="space-y-2 sm:hidden">
@@ -68,6 +48,7 @@ export default function DealsTable({ deals }: DealsTableProps) {
         {filtered.map((d) => {
           const a = STAGE_ACCENT[stageAccentOf(d.stage)];
           const p = PRIORITY_META[d.priority];
+          const t = DEAL_TYPE_META[d.dealType];
           const past = new Date(d.targetCloseDate).getTime() < today.getTime();
           return (
             <button
@@ -87,6 +68,10 @@ export default function DealsTable({ deals }: DealsTableProps) {
                   {stageLabelOf(d.stage)}
                 </span>
                 <span className={`badge border ${p.badge}`}>{p.label}</span>
+                <span className={`badge border ${t.badge}`}>{t.shortLabel}</span>
+                {d.landingPageUrl && (
+                  <Link2 className="h-3.5 w-3.5 shrink-0 text-accent" aria-label="Punya landing page" />
+                )}
                 <span className="ml-auto text-sm font-extrabold tabular-nums text-content-primary">
                   {hasNoEstimate(d) ? (
                     <span className="text-xs font-semibold text-content-muted">Belum diestimasi</span>
@@ -146,7 +131,15 @@ export default function DealsTable({ deals }: DealsTableProps) {
                   className="cursor-pointer transition-colors hover:bg-ink-overlay"
                 >
                   <td className="px-4 py-3">
-                    <p className="font-semibold text-content-primary">{d.title}</p>
+                    <p className="flex items-center gap-1.5 font-semibold text-content-primary">
+                      <span className="min-w-0 truncate">{d.title}</span>
+                      <span className={`badge border shrink-0 ${DEAL_TYPE_META[d.dealType].badge}`}>
+                        {DEAL_TYPE_META[d.dealType].shortLabel}
+                      </span>
+                      {d.landingPageUrl && (
+                        <Link2 className="h-3.5 w-3.5 shrink-0 text-accent" aria-label="Punya landing page" />
+                      )}
+                    </p>
                     <p className="text-xs text-content-muted">{d.company}</p>
                   </td>
                   <td className="px-4 py-3 font-bold tabular-nums whitespace-nowrap text-success">
@@ -199,30 +192,6 @@ export default function DealsTable({ deals }: DealsTableProps) {
         </table>
       </div>
     </div>
-  );
-}
-
-function FilterChip({
-  label,
-  active,
-  onClick,
-}: {
-  label: string;
-  active: boolean;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={
-        "shrink-0 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors " +
-        (active
-          ? "border-accent/50 bg-accent-soft text-accent"
-          : "border-line bg-ink-overlay text-content-secondary hover:text-content-primary")
-      }
-    >
-      {label}
-    </button>
   );
 }
 
