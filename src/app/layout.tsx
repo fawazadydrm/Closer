@@ -7,7 +7,7 @@ import Providers from "@/state/Providers";
 // would otherwise fail the production build.
 
 export const metadata: Metadata = {
-  title: "CLOSER — Personal Pipeline OS",
+  title: "Closer",
   description:
     "Client & Lead Opportunity Sales Engine Radar. Enterprise B2B sales monitoring, document hub, and task tracker.",
   applicationName: "CLOSER",
