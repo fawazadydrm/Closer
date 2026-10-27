@@ -153,7 +153,7 @@ export default function AddDealModal() {
             name: row.name.trim() || row.url,
             category: row.category,
             url: row.url.trim(),
-            source: "drive",
+            source: /dropbox\.com/i.test(row.url) ? "dropbox" : "drive",
             uploadedAt: new Date().toISOString(),
           },
         })

@@ -82,6 +82,8 @@ export interface Deal {
   targetCloseDate: string; // ISO date
   industry: string;
   owner: string;
+  /** Dipindah manual ke Repository — disembunyikan dari pipeline & KPI aktif. */
+  archived: boolean;
   documents: DealDocument[];
   notes: NoteEntry[];
   createdAt: string; // ISO

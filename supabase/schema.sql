@@ -44,6 +44,7 @@ create table if not exists public.deals (
   target_close_date date not null,
   industry          text not null default '',
   owner             text not null default '',
+  archived          boolean not null default false, -- dipindah manual ke Repository
   created_at        timestamptz not null default now()
 );
 
@@ -113,6 +114,9 @@ alter table public.deals add column if not exists landing_page_url text;
 
 -- 4d. v6 migration: HPS (patokan budget end user) drives the margin simulation.
 alter table public.deals add column if not exists hps bigint not null default 0;
+
+-- 4e. v7 migration: Repository — deals archived manually by the user.
+alter table public.deals add column if not exists archived boolean not null default false;
 
 -- 5. Indexes.
 create index if not exists idx_documents_deal on public.deal_documents(deal_id);

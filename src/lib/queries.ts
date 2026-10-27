@@ -9,6 +9,53 @@ import type {
   TaskReminder,
 } from "./types";
 
+// ── Sync error reporting ───────────────────────────────────────
+// Mutations return a boolean so the optimistic UI can keep moving; the real
+// failure reason is forwarded here so the UI can surface it instead of the
+// write silently reverting on the next reload (e.g. a missing column because
+// a Supabase migration hasn't been run).
+type SyncErrorHandler = (message: string) => void;
+let syncErrorHandler: SyncErrorHandler | null = null;
+
+export function setSyncErrorHandler(handler: SyncErrorHandler | null): void {
+  syncErrorHandler = handler;
+}
+
+/** Flatten anything Supabase/JS throws into a readable one-liner.
+ *  `PostgrestError` extends Error with a non-enumerable `message`, so logging
+ *  the raw object renders as `{}` in devtools/dev-overlay — read the fields. */
+function describeError(error: unknown): string {
+  if (error == null) return "Terjadi kesalahan.";
+  if (typeof error === "string") return error;
+
+  const rec = error as Record<string, unknown>;
+  const parts = [rec.message, rec.code, rec.details, rec.hint].filter(
+    (v): v is string => typeof v === "string" && v.length > 0
+  );
+  if (parts.length > 0) return parts.join(" · ");
+  if (error instanceof Error) return error.name;
+
+  try {
+    const json = JSON.stringify(error);
+    if (json && json !== "{}") return json;
+  } catch {
+    /* circular — ignore */
+  }
+  return "Kesalahan tidak diketahui (lihat console).";
+}
+
+function reportSyncError(scope: string, error: unknown): void {
+  const message = describeError(error);
+  const rec = error as Record<string, unknown>;
+  console.error(`[CLOSER] ${scope} failed: ${message}`, {
+    message: rec?.message,
+    code: rec?.code,
+    details: rec?.details,
+    hint: rec?.hint,
+  });
+  syncErrorHandler?.(`${scope} — ${message}`);
+}
+
 // ── Row shapes ─────────────────────────────────────────────────
 interface DealRow {
   id: string;
@@ -28,6 +75,7 @@ interface DealRow {
   target_close_date: string;
   industry: string;
   owner: string;
+  archived?: boolean | null;
   created_at: string;
 }
 
@@ -86,6 +134,7 @@ function rowToDeal(r: DealRow): Deal {
     targetCloseDate: r.target_close_date,
     industry: r.industry,
     owner: r.owner,
+    archived: r.archived ?? false,
     documents: [],
     notes: [],
     createdAt: r.created_at,
@@ -129,22 +178,43 @@ async function loadDeals(
 ): Promise<{ deals: Deal[]; tasks: TaskReminder[] }> {
   const db = getSupabase();
   if (!db) return { deals: [], tasks: [] };
-  const q = db.from(T.deals).select(
-    `id, title, company, contact_name, contact_phone, contact_role,
+
+  const DEAL_RELATIONS = `deal_documents(id, deal_id, name, category, url, source, size_label, uploaded_at),
+     deal_notes(id, deal_id, text, created_at)`;
+  const DEAL_COLS_V6 = `id, title, company, contact_name, contact_phone, contact_role,
      value, hps, cogs, margin_pct, stage, priority, deal_type, landing_page_url,
-     target_close_date, industry, owner, created_at,
-     deal_documents(id, deal_id, name, category, url, source, size_label, uploaded_at),
-     deal_notes(id, deal_id, text, created_at)`
-  );
-  if (dealId) q.eq("id", dealId);
-  const { data, error } = await q.order("created_at", { ascending: false });
+     target_close_date, industry, owner, created_at`;
+  const DEAL_COLS_V7 = `id, title, company, contact_name, contact_phone, contact_role,
+     value, hps, cogs, margin_pct, stage, priority, deal_type, landing_page_url,
+     target_close_date, industry, owner, archived, created_at`;
+
+  const runQuery = (cols: string) => {
+    const q = db.from(T.deals).select(`${cols}, ${DEAL_RELATIONS}`);
+    if (dealId) q.eq("id", dealId);
+    return q.order("created_at", { ascending: false });
+  };
+
+  // `archived` was added in schema v7. Until the migration is run the column is
+  // absent and selecting it would fail — quietly retry without it (archived
+  // then defaults to false) so a pending migration never blanks the pipeline.
+  let { data, error } = await runQuery(DEAL_COLS_V7);
+  if (error) {
+    console.warn(
+      "[CLOSER] Query with `archived` failed — run the v7 migration in supabase/schema.sql. Falling back without it.",
+      error.message
+    );
+    ({ data, error } = await runQuery(DEAL_COLS_V6));
+  }
 
   if (error) {
-    console.error("[CLOSER] loadDeals failed:", error);
+    reportSyncError("Gagal memuat data", error);
     return { deals: [], tasks: [] };
   }
 
-  const deals: Deal[] = ((data ?? []) as DealWithRelationsRow[]).map((row) => {
+  // `select` is fed a runtime-built string, so PostgREST's literal-typed
+  // inference is unavailable — assert the known row shape instead.
+  const rows = (data ?? []) as unknown as DealWithRelationsRow[];
+  const deals: Deal[] = rows.map((row) => {
     const deal = rowToDeal(row);
     deal.documents = (row.deal_documents ?? []).sort((a: DocRow, b: DocRow) =>
       b.uploaded_at.localeCompare(a.uploaded_at)
@@ -161,7 +231,7 @@ async function loadDeals(
     .select("id, deal_id, title, due_at, done, channel")
     .order("due_at", { ascending: true });
 
-  if (tasksError) console.error("[CLOSER] loadTasks failed:", tasksError);
+  if (tasksError) reportSyncError("Gagal memuat tugas", tasksError);
 
   return { deals, tasks: (tasksData ?? []).map(rowToTask) };
 }
@@ -188,10 +258,33 @@ async function addDeal(deal: Deal): Promise<boolean> {
     target_close_date: deal.targetCloseDate,
     industry: deal.industry,
     owner: deal.owner,
+    archived: deal.archived,
     created_at: deal.createdAt,
   });
-  if (error) console.error("[CLOSER] addDeal failed:", error);
-  return !error;
+  if (error) {
+    reportSyncError("Gagal menyimpan deal", error);
+    return false;
+  }
+
+  // Documents uploaded while creating the deal (AddDealModal stages PDFs and
+  // embeds them in `deal.documents`) must be persisted here too — otherwise
+  // they exist only in optimistic state and disappear on the next reload.
+  if (deal.documents.length > 0) {
+    const { error: docsError } = await db.from(T.documents).insert(
+      deal.documents.map((doc) => ({
+        id: doc.id,
+        deal_id: deal.id,
+        name: doc.name,
+        category: doc.category,
+        url: doc.url,
+        source: doc.source,
+        size_label: doc.sizeLabel ?? null,
+        uploaded_at: doc.uploadedAt,
+      }))
+    );
+    if (docsError) reportSyncError("Gagal menyimpan dokumen deal", docsError);
+  }
+  return true;
 }
 
 async function updateDeal(id: string, patch: Partial<Deal>): Promise<boolean> {
@@ -211,13 +304,14 @@ async function updateDeal(id: string, patch: Partial<Deal>): Promise<boolean> {
   if (patch.targetCloseDate !== undefined) row.target_close_date = patch.targetCloseDate;
   if (patch.industry !== undefined) row.industry = patch.industry;
   if (patch.owner !== undefined) row.owner = patch.owner;
+  if (patch.archived !== undefined) row.archived = patch.archived;
   if (patch.contact) {
     if (patch.contact.name !== undefined) row.contact_name = patch.contact.name;
     if (patch.contact.phone !== undefined) row.contact_phone = patch.contact.phone;
     if (patch.contact.role !== undefined) row.contact_role = patch.contact.role ?? null;
   }
   const { error } = await db.from(T.deals).update(row).eq("id", id);
-  if (error) console.error("[CLOSER] updateDeal failed:", error);
+  if (error) reportSyncError("Gagal memperbarui deal", error);
   return !error;
 }
 
@@ -226,7 +320,7 @@ async function deleteDeal(id: string): Promise<boolean> {
   if (!db) return false;
   // cascade removes docs, notes, tasks via FK
   const { error } = await db.from(T.deals).delete().eq("id", id);
-  if (error) console.error("[CLOSER] deleteDeal failed:", error);
+  if (error) reportSyncError("Gagal menghapus deal", error);
   return !error;
 }
 
@@ -243,7 +337,7 @@ async function addDocument(dealId: string, doc: DealDocument): Promise<boolean> 
     size_label: doc.sizeLabel ?? null,
     uploaded_at: doc.uploadedAt,
   });
-  if (error) console.error("[CLOSER] addDocument failed:", error);
+  if (error) reportSyncError("Gagal menambah dokumen", error);
   return !error;
 }
 
@@ -251,7 +345,7 @@ async function removeDocument(docId: string): Promise<boolean> {
   const db = getSupabase();
   if (!db) return false;
   const { error } = await db.from(T.documents).delete().eq("id", docId);
-  if (error) console.error("[CLOSER] removeDocument failed:", error);
+  if (error) reportSyncError("Gagal menghapus dokumen", error);
   return !error;
 }
 
@@ -264,7 +358,7 @@ async function addNote(dealId: string, note: NoteEntry): Promise<boolean> {
     text: note.text,
     created_at: note.createdAt,
   });
-  if (error) console.error("[CLOSER] addNote failed:", error);
+  if (error) reportSyncError("Gagal menambah catatan", error);
   return !error;
 }
 
@@ -279,7 +373,7 @@ async function addTask(task: TaskReminder): Promise<boolean> {
     done: task.done,
     channel: task.channel,
   });
-  if (error) console.error("[CLOSER] addTask failed:", error);
+  if (error) reportSyncError("Gagal menambah tugas", error);
   return !error;
 }
 
@@ -287,7 +381,7 @@ async function toggleTask(id: string, done: boolean): Promise<boolean> {
   const db = getSupabase();
   if (!db) return false;
   const { error } = await db.from(T.tasks).update({ done }).eq("id", id);
-  if (error) console.error("[CLOSER] toggleTask failed:", error);
+  if (error) reportSyncError("Gagal memperbarui tugas", error);
   return !error;
 }
 
@@ -295,7 +389,7 @@ async function deleteTask(id: string): Promise<boolean> {
   const db = getSupabase();
   if (!db) return false;
   const { error } = await db.from(T.tasks).delete().eq("id", id);
-  if (error) console.error("[CLOSER] deleteTask failed:", error);
+  if (error) reportSyncError("Gagal menghapus tugas", error);
   return !error;
 }
 

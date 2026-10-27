@@ -40,6 +40,25 @@ function isValidDate(iso?: string): boolean {
 }
 
 export async function POST(req: Request) {
+  // Reject cross-site browser calls. Without this, any website could POST here
+  // (a simple `text/plain` request skips the CORS preflight) and use this route
+  // as a relay to spam the configured Telegram chat.
+  const origin = req.headers.get("origin");
+  if (origin) {
+    let originHost: string | null = null;
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      originHost = null;
+    }
+    if (!originHost || originHost !== req.headers.get("host")) {
+      return NextResponse.json(
+        { error: "Origin tidak diizinkan." },
+        { status: 403 }
+      );
+    }
+  }
+
   let body: ReminderBody;
   try {
     body = (await req.json()) as ReminderBody;

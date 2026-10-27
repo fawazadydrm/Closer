@@ -8,6 +8,8 @@ import {
   StickyNote,
   BellRing,
   ExternalLink,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import Drawer from "@/components/ui/Drawer";
 import FieldForms from "./FieldForms";
@@ -35,8 +37,8 @@ const TABS: { id: Tab; label: string; icon: typeof LayoutList }[] = [
 ];
 
 export default function DealDrawer() {
-  const { selectedDealId, closeDeal } = useUI();
-  const { dealById } = useCloser();
+  const { selectedDealId, closeDeal, showToast } = useUI();
+  const { dealById, dispatch } = useCloser();
   const [tab, setTab] = useState<Tab>("overview");
 
   const deal = selectedDealId ? dealById(selectedDealId) : undefined;
@@ -73,6 +75,46 @@ export default function DealDrawer() {
         </span>
       }
     >
+      {/* archive controls — manual move to Repository */}
+      <div className="mb-3 flex items-center justify-between gap-2">
+        {deal.archived ? (
+          <span className="badge border border-line-muted bg-ink-overlay text-content-secondary">
+            <Archive className="h-3 w-3" /> Diarsipkan
+          </span>
+        ) : (
+          <span className="text-[11px] text-content-muted">
+            {deal.stage === "closed_lost" ? "Closed lost — siap diarsipkan." : ""}
+          </span>
+        )}
+        <button
+          onClick={() => {
+            const next = !deal.archived;
+            dispatch({ type: "UPDATE_DEAL", id: deal.id, patch: { archived: next } });
+            showToast(
+              next
+                ? "Deal dipindahkan ke Repository."
+                : "Deal dikembalikan ke pipeline."
+            );
+          }}
+          className={
+            "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors " +
+            (deal.archived
+              ? "border-accent/40 bg-accent-soft text-accent hover:opacity-80"
+              : "border-line bg-ink-surface text-content-secondary hover:border-line-muted hover:text-content-primary")
+          }
+        >
+          {deal.archived ? (
+            <>
+              <ArchiveRestore className="h-3.5 w-3.5" /> Kembalikan
+            </>
+          ) : (
+            <>
+              <Archive className="h-3.5 w-3.5" /> Arsipkan
+            </>
+          )}
+        </button>
+      </div>
+
       {/* value banner — hasil simulasi HPS */}
       <div className="mb-4 rounded-xl border border-line bg-accent-soft px-4 py-3">
         <div className="flex items-end justify-between gap-3">

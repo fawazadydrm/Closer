@@ -58,6 +58,12 @@ export default function FieldForms({ deal }: { deal: Deal }) {
   }, [form.hps, form.marginPct]);
 
   const save = () => {
+    // Guard against a cleared/invalid <input type="date"> — `new Date("").toISOString()`
+    // throws RangeError and would silently break the Save action.
+    const parsedClose = form.targetCloseDate ? new Date(form.targetCloseDate) : null;
+    const validClose = parsedClose !== null && !Number.isNaN(parsedClose.getTime());
+    if (!validClose) set("targetCloseDate", deal.targetCloseDate.slice(0, 10));
+
     dispatch({
       type: "UPDATE_DEAL",
       id: deal.id,
@@ -74,7 +80,7 @@ export default function FieldForms({ deal }: { deal: Deal }) {
         dealType: form.dealType,
         landingPageUrl: form.landingPageUrl.trim(),
         stage: form.stage,
-        targetCloseDate: new Date(form.targetCloseDate).toISOString(),
+        targetCloseDate: validClose ? parsedClose.toISOString() : deal.targetCloseDate,
       },
     });
     showToast("Perubahan tersimpan.");

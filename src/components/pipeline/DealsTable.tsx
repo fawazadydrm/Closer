@@ -5,7 +5,14 @@ import { Paperclip, ChevronRight, Link2 } from "lucide-react";
 import { useUI } from "@/state/UIContext";
 import { DEAL_TYPE_META, STAGE_ACCENT, PRIORITY_META, stageById } from "@/lib/stages";
 import type { Deal, StageId } from "@/lib/types";
-import { formatIDR, formatDateShort, hasNoEstimate, isSameDay, sellingPrice } from "@/lib/format";
+import {
+  formatIDR,
+  formatDateShort,
+  hasNoEstimate,
+  isSameDay,
+  sellingPrice,
+  startOfDay,
+} from "@/lib/format";
 
 interface DealsTableProps {
   deals: Deal[];
@@ -26,7 +33,8 @@ export default function DealsTable({ deals }: DealsTableProps) {
     );
   }, [deals, query]);
 
-  const today = new Date();
+  // Compare by calendar day so a deal targeting *today* isn't flagged overdue.
+  const today = startOfDay(new Date());
 
   return (
     <div className="space-y-3">
@@ -49,7 +57,8 @@ export default function DealsTable({ deals }: DealsTableProps) {
           const a = STAGE_ACCENT[stageAccentOf(d.stage)];
           const p = PRIORITY_META[d.priority];
           const t = DEAL_TYPE_META[d.dealType];
-          const past = new Date(d.targetCloseDate).getTime() < today.getTime();
+          const past =
+            startOfDay(new Date(d.targetCloseDate)).getTime() < today.getTime();
           return (
             <button
               key={d.id}
@@ -106,12 +115,13 @@ export default function DealsTable({ deals }: DealsTableProps) {
               <th className="px-4 py-3 font-semibold">Target</th>
               <th className="px-4 py-3 font-semibold">Kontak</th>
               <th className="px-4 py-3 font-semibold text-right">Docs</th>
+              <th className="px-2 py-3" aria-label="Buka detail" />
             </tr>
           </thead>
           <tbody className="divide-y divide-line">
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-content-muted">
+                <td colSpan={8} className="px-4 py-8 text-center text-content-muted">
                   Tidak ada deal yang cocok.
                 </td>
               </tr>
@@ -123,7 +133,8 @@ export default function DealsTable({ deals }: DealsTableProps) {
                 new Date(d.targetCloseDate),
                 today
               );
-              const past = new Date(d.targetCloseDate).getTime() < today.getTime();
+              const past =
+                startOfDay(new Date(d.targetCloseDate)).getTime() < today.getTime();
               return (
                 <tr
                   key={d.id}

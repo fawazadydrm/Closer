@@ -10,7 +10,7 @@ interface MobileNavProps {
 export default function MobileNav({ active, onChange }: MobileNavProps) {
   return (
     <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-white/95 backdrop-blur-sm md:hidden">
-      <div className="mx-auto grid max-w-lg grid-cols-4 px-2 pb-[env(safe-area-inset-bottom)] pt-0.5 landscape:max-w-2xl landscape:pt-0">
+      <div className="mx-auto grid max-w-xl grid-cols-6 px-1 pb-[env(safe-area-inset-bottom)] pt-0.5 landscape:max-w-2xl landscape:pt-0">
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive = active === item.key;
@@ -36,7 +36,7 @@ export default function MobileNav({ active, onChange }: MobileNavProps) {
               >
                 <Icon className="h-5 w-5 shrink-0" strokeWidth={isActive ? 2.4 : 2} />
               </span>
-              {item.label}
+              {item.shortLabel}
             </button>
           );
         })}

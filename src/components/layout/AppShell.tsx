@@ -1,7 +1,7 @@
 "use client";
 
 import { type ReactNode } from "react";
-import { Loader2, Radar } from "lucide-react";
+import { AlertTriangle, Loader2, Radar, X } from "lucide-react";
 import DesktopTabs from "./DesktopTabs";
 import MobileNav from "./MobileNav";
 import { useUI } from "@/state/UIContext";
@@ -9,7 +9,7 @@ import { useCloser } from "@/state/CloserContext";
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const { activeTab, navigate } = useUI();
-  const { loading, meta } = useCloser();
+  const { loading, meta, dismissSyncError } = useCloser();
 
   return (
     <div className="flex min-h-[100dvh] flex-col">
@@ -23,6 +23,26 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </div>
         </div>
       </div>
+
+      {/* Write-through failure notice — without this a failed save looks
+          successful until the next reload reverts it. */}
+      {meta.error && (
+        <div className="border-b border-danger/30 bg-danger-soft">
+          <div className="mx-auto flex max-w-[1600px] items-start gap-2 px-4 py-2 md:px-6">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-danger" />
+            <p className="min-w-0 flex-1 text-xs font-medium leading-snug text-danger">
+              Perubahan gagal disimpan: {meta.error}
+            </p>
+            <button
+              onClick={dismissSyncError}
+              aria-label="Tutup peringatan"
+              className="-m-1 shrink-0 rounded-md p-1 text-danger transition-colors hover:bg-danger/10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Content — bottom padding clears the fixed mobile nav + iOS home indicator */}
       <main className="mx-auto w-full max-w-[1600px] flex-1 px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-4 landscape:pt-3 md:px-6 md:pb-10 md:pt-5">

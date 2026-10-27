@@ -19,7 +19,11 @@
       "Bash(node *)",
       "Bash(netstat -ano)",
       "Bash(taskkill //PID 5648 //F)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(command -v vercel)",
+      "Bash(vercel ls *)"
     ]
   }
 }

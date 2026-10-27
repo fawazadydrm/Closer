@@ -28,6 +28,11 @@ No CLI or Docker needed — everything runs in the Supabase web dashboard.
 
 > ✅ The schema is idempotent — you can re-run it safely; it won't wipe existing rows.
 
+> 🔁 **Sudah pernah setup sebelumnya (upgrade)?** Jalankan ulang file yang sama.
+> Migrasi **v7** menambahkan kolom `deals.archived` yang dipakai modul **Repository**,
+> tanpa menghapus data. Sampai migrasi dijalankan, app tetap bisa dibuka (kolom
+> `archived` diabaikan) tetapi tombol Arsipkan belum tersimpan permanen.
+
 ---
 
 ## 3. Get your API keys

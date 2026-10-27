@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Shell(npx tsc --noEmit)",
+      "Shell(npm:*)",
+      "Shell(node -e \"try { console.log(new Date('').toISOString()) } catch (e) { console.log('THROWS:', e.name, e.message) }\")",
+      "Shell(node -e \"const today=new Date('2026-10-27T09:00:00+07:00'); const t=new Date('2026-10-27'); const past=t.getTime()<today.getTime(); const same=t.toDateString()===today.toDateString(); console.log('targetCloseDate today => past:',past,' closing:',same)\")",
+      "Shell(type:*)",
+      "Shell(curl -s -o NUL -w \"home %%{http_code}\\n\" http://localhost:3000/)",
+      "powershell",
+      "Shell(npx next dev -p 3100)",
+      "Shell(set:*)",
+      "Shell(agent-browser:*)"
+    ],
+    "deny": [],
+    "defaultMode": "default"
+  }
+}

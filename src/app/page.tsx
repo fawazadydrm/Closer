@@ -5,6 +5,8 @@ import DashboardView from "@/components/dashboard/DashboardView";
 import PipelineView from "@/components/pipeline/PipelineView";
 import RemindersView from "@/components/reminders/RemindersView";
 import DocumentsView from "@/components/documents/DocumentsView";
+import ContactsView from "@/components/contacts/ContactsView";
+import RepositoryView from "@/components/repository/RepositoryView";
 import { useUI } from "@/state/UIContext";
 
 export default function Page() {
@@ -14,8 +16,10 @@ export default function Page() {
     <AppShell>
       {activeTab === "dashboard" && <DashboardView />}
       {activeTab === "pipeline" && <PipelineView />}
+      {activeTab === "contacts" && <ContactsView />}
       {activeTab === "reminders" && <RemindersView />}
       {activeTab === "documents" && <DocumentsView />}
+      {activeTab === "repository" && <RepositoryView />}
     </AppShell>
   );
 }

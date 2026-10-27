@@ -21,7 +21,7 @@ import type {
 } from "@/lib/types";
 import { INITIAL_DEALS, INITIAL_TASKS } from "@/lib/data";
 import { sellingPrice, simulateFromHps, uid } from "@/lib/format";
-import { db } from "@/lib/queries";
+import { db, setSyncErrorHandler } from "@/lib/queries";
 import { getSupabase } from "@/lib/supabase";
 import { removeStoredPdf } from "@/lib/storage";
 
@@ -51,6 +51,7 @@ export function normalizeDeal(input: NewDealInput): Deal {
     targetCloseDate: input.targetCloseDate ?? todayIso,
     industry: input.industry?.trim() || "Umum",
     owner: input.owner ?? "Fawaz",
+    archived: input.archived ?? false,
     documents: input.documents ?? [],
     notes: input.notes ?? [],
     createdAt: new Date().toISOString(),
@@ -98,8 +99,16 @@ function persistAction(
       return db.updateDeal(action.id, action.patch);
     case "MOVE_DEAL":
       return db.updateDeal(action.id, { stage: action.stage });
-    case "DELETE_DEAL":
+    case "DELETE_DEAL": {
+      // DB rows cascade via FK; also drop uploaded PDF objects so storage
+      // doesn't accumulate orphans.
+      const docs =
+        stateRef.current.deals.find((d) => d.id === action.id)?.documents ?? [];
+      docs
+        .filter((x) => x.source === "upload")
+        .forEach((x) => void removeStoredPdf(x.url));
       return db.deleteDeal(action.id);
+    }
     case "ADD_NOTE":
       return db.addNote(action.dealId, {
         id: action.noteId,
@@ -225,7 +234,8 @@ interface CloserContextValue extends CloserState {
   dispatch: React.Dispatch<CloserAction>;
   dealById: (id: string) => Deal | undefined;
   loading: boolean;
-  meta: { lastSyncedAt: string; syncing: number };
+  meta: { lastSyncedAt: string; syncing: number; error: string | null };
+  dismissSyncError: () => void;
 }
 
 const CloserContext = createContext<CloserContextValue | null>(null);
@@ -239,6 +249,14 @@ export function CloserProvider({ children }: { children: ReactNode }) {
   // Timestamp of the last successful hydration — surfaced to the UI as
   // "data terakhir disinkronkan".
   const [lastSyncedAt, setLastSyncedAt] = useState<string>(() => new Date().toISOString());
+  // Last persistence failure — shown in the shell so a failed write can't
+  // masquerade as a successful one until the next reload.
+  const [syncError, setSyncError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSyncErrorHandler(setSyncError);
+    return () => setSyncErrorHandler(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -294,12 +312,18 @@ export function CloserProvider({ children }: { children: ReactNode }) {
       bumpSyncing(+1);
       pending
         .then((ok) => {
-          if (ok) setLastSyncedAt(new Date().toISOString());
+          if (ok) {
+            setLastSyncedAt(new Date().toISOString());
+            setSyncError(null);
+          }
+          // On failure the reason arrives via setSyncErrorHandler.
         })
         .finally(() => bumpSyncing(-1));
     },
     [bumpSyncing]
   );
+
+  const dismissSyncError = useCallback(() => setSyncError(null), []);
 
   const value = useMemo<CloserContextValue>(
     () => ({
@@ -307,9 +331,10 @@ export function CloserProvider({ children }: { children: ReactNode }) {
       dispatch: dispatchWithPersistence,
       dealById: (id) => state.deals.find((d) => d.id === id),
       loading,
-      meta: { lastSyncedAt, syncing },
+      meta: { lastSyncedAt, syncing, error: syncError },
+      dismissSyncError,
     }),
-    [state, loading, lastSyncedAt, syncing, dispatchWithPersistence]
+    [state, loading, lastSyncedAt, syncing, syncError, dispatchWithPersistence, dismissSyncError]
   );
 
   return (

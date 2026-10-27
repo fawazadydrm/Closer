@@ -19,38 +19,41 @@ export default function PipelineView() {
   const [stageFilter, setStageFilter] = useState<StageId | "all">("all");
   const [typeFilter, setTypeFilter] = useState<DealType | "all">("all");
 
+  // Archived deals live in the Repository, not the live pipeline.
+  const activeDeals = useMemo(() => deals.filter((d) => !d.archived), [deals]);
+
   const stageOptions = useMemo(
     () => [
-      { id: "all" as const, label: "Semua Tahap", count: deals.length },
+      { id: "all" as const, label: "Semua Tahap", count: activeDeals.length },
       ...PIPELINE_STAGES.map((s) => ({
         id: s.id,
         label: s.shortLabel,
-        count: deals.filter((d) => d.stage === s.id).length,
+        count: activeDeals.filter((d) => d.stage === s.id).length,
       })),
     ],
-    [deals]
+    [activeDeals]
   );
 
   const typeOptions = useMemo(
     () => [
-      { id: "all" as const, label: "Semua Tipe", count: deals.length },
+      { id: "all" as const, label: "Semua Tipe", count: activeDeals.length },
       ...DEAL_TYPES.map((t) => ({
         id: t,
         label: DEAL_TYPE_META[t].label,
-        count: deals.filter((d) => d.dealType === t).length,
+        count: activeDeals.filter((d) => d.dealType === t).length,
       })),
     ],
-    [deals]
+    [activeDeals]
   );
 
   const filtered = useMemo(
     () =>
-      deals.filter(
+      activeDeals.filter(
         (d) =>
           (stageFilter === "all" || d.stage === stageFilter) &&
           (typeFilter === "all" || d.dealType === typeFilter)
       ),
-    [deals, stageFilter, typeFilter]
+    [activeDeals, stageFilter, typeFilter]
   );
 
   return (
